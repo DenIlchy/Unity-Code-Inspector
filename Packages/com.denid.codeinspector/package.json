@@ -1,0 +1,33 @@
+{
+  "name": "com.denid.codeinspector",
+  "version": "0.1.0",
+  "displayName": "Code Inspector",
+  "description": "Visual script mapper for Unity: draws script connections, events and triggers as an interactive graph with Scene and Architecture views, live runtime activity, and parameter tweaking.",
+  "unity": "6000.0",
+  "license": "MIT",
+  "author": {
+    "name": "denid"
+  },
+  "keywords": [
+    "editor",
+    "graph",
+    "visualization",
+    "architecture",
+    "dependencies",
+    "tools"
+  ],
+  "documentationUrl": "https://github.com/<github-user>/Unity-Code-Inspector#readme",
+  "changelogUrl": "https://github.com/<github-user>/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/CHANGELOG.md",
+  "licensesUrl": "https://github.com/<github-user>/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<github-user>/Unity-Code-Inspector.git"
+  },
+  "samples": [
+    {
+      "displayName": "Demo",
+      "description": "Small demo scene (player, enemies, spawner, trigger zone, HUD) for Code Inspector.",
+      "path": "Samples~/Demo"
+    }
+  ]
+}

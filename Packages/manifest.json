@@ -1,4 +1,7 @@
 {
+  "testables": [
+    "com.denid.codeinspector"
+  ],
   "dependencies": {
     "com.unity.ai.navigation": "2.0.13",
     "com.unity.collab-proxy": "2.12.4",

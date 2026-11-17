@@ -1,0 +1,408 @@
+/* Code Inspector window styles (works for light and dark skin via .ci-light) */
+
+.ci-window {
+    flex-grow: 1;
+}
+
+.ci-toolbar-spacer {
+    flex-grow: 1;
+}
+
+.ci-canvas {
+    flex-grow: 1;
+    background-color: rgb(40, 40, 40);
+    overflow: hidden;
+}
+
+.ci-light .ci-canvas {
+    background-color: rgb(200, 200, 200);
+}
+
+/* Nodes */
+
+.ci-node {
+    position: absolute;
+    width: 220px;
+    background-color: rgb(56, 56, 56);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgb(25, 25, 25);
+    border-right-color: rgb(25, 25, 25);
+    border-top-color: rgb(25, 25, 25);
+    border-bottom-color: rgb(25, 25, 25);
+}
+
+.ci-light .ci-node {
+    background-color: rgb(235, 235, 235);
+    border-left-color: rgb(150, 150, 150);
+    border-right-color: rgb(150, 150, 150);
+    border-top-color: rgb(150, 150, 150);
+    border-bottom-color: rgb(150, 150, 150);
+}
+
+.ci-node-selected {
+    border-left-color: rgb(70, 150, 255);
+    border-right-color: rgb(70, 150, 255);
+    border-top-color: rgb(70, 150, 255);
+    border-bottom-color: rgb(70, 150, 255);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+}
+
+.ci-node-dimmed {
+    opacity: 0.25;
+}
+
+.ci-node-header {
+    flex-direction: row;
+    min-height: 34px;
+}
+
+.ci-node-strip {
+    width: 6px;
+    border-top-left-radius: 5px;
+    -unity-slice-left: 0;
+}
+
+.ci-node-monobehaviour > .ci-node-header .ci-node-strip { background-color: rgb(70, 130, 220); }
+.ci-node-scriptableobject > .ci-node-header .ci-node-strip { background-color: rgb(150, 90, 200); }
+.ci-node-plainclass > .ci-node-header .ci-node-strip { background-color: rgb(120, 120, 120); }
+.ci-node-interface > .ci-node-header .ci-node-strip { background-color: rgb(60, 170, 90); }
+.ci-node-struct > .ci-node-header .ci-node-strip { background-color: rgb(40, 160, 160); }
+.ci-node-staticclass > .ci-node-header .ci-node-strip { background-color: rgb(220, 140, 40); }
+
+.ci-node-headertext {
+    flex-grow: 1;
+    padding-left: 8px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.ci-node-title {
+    -unity-font-style: bold;
+    font-size: 12px;
+    color: rgb(230, 230, 230);
+    -unity-text-align: middle-left;
+}
+
+.ci-light .ci-node-title {
+    color: rgb(30, 30, 30);
+}
+
+.ci-node-caption {
+    font-size: 9px;
+    color: rgb(160, 160, 160);
+}
+
+.ci-light .ci-node-caption {
+    color: rgb(90, 90, 90);
+}
+
+/* Badges */
+
+.ci-node-badges {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding-left: 8px;
+    padding-bottom: 4px;
+}
+
+.ci-badge {
+    font-size: 8px;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    margin-right: 3px;
+    margin-top: 2px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    background-color: rgb(80, 80, 80);
+    color: rgb(220, 220, 220);
+}
+
+.ci-badge-update { background-color: rgb(50, 90, 140); }
+.ci-badge-trigger { background-color: rgb(160, 80, 40); }
+.ci-badge-collision { background-color: rgb(140, 60, 60); }
+.ci-badge-mouse { background-color: rgb(90, 90, 140); }
+.ci-badge-events { background-color: rgb(140, 60, 120); }
+.ci-badge-order { background-color: rgb(90, 110, 60); }
+
+/* Members */
+
+.ci-node-members {
+    margin-left: 8px;
+    margin-right: 8px;
+    margin-bottom: 4px;
+}
+
+.ci-member-group {
+    -unity-font-style: bold;
+    font-size: 9px;
+    color: rgb(170, 170, 170);
+    margin-top: 3px;
+}
+
+.ci-member {
+    font-size: 10px;
+    color: rgb(200, 200, 200);
+    padding-left: 6px;
+    white-space: normal;
+}
+
+.ci-light .ci-member { color: rgb(50, 50, 50); }
+.ci-light .ci-member-group { color: rgb(90, 90, 90); }
+
+/* Tooltip, legend, status bar, empty state */
+
+.ci-edge-tooltip {
+    background-color: rgba(20, 20, 20, 0.92);
+    color: rgb(230, 230, 230);
+    font-size: 11px;
+    padding: 4px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.ci-light .ci-edge-tooltip {
+    background-color: rgba(250, 250, 250, 0.95);
+    color: rgb(20, 20, 20);
+}
+
+.ci-legend {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    background-color: rgba(20, 20, 20, 0.85);
+    padding: 6px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    min-width: 170px;
+}
+
+.ci-light .ci-legend {
+    background-color: rgba(245, 245, 245, 0.92);
+}
+
+.ci-legend-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 1px;
+}
+
+.ci-legend-swatch {
+    width: 22px;
+    height: 3px;
+    margin-right: 6px;
+}
+
+.ci-legend-label {
+    font-size: 10px;
+    color: rgb(210, 210, 210);
+}
+
+.ci-light .ci-legend-label { color: rgb(40, 40, 40); }
+
+.ci-statusbar {
+    flex-direction: row;
+    align-items: center;
+    min-height: 20px;
+    padding-left: 8px;
+    background-color: rgb(50, 50, 50);
+}
+
+.ci-light .ci-statusbar {
+    background-color: rgb(175, 175, 175);
+}
+
+.ci-status-label {
+    font-size: 10px;
+    color: rgb(200, 200, 200);
+}
+
+.ci-light .ci-status-label { color: rgb(30, 30, 30); }
+
+.ci-empty {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.ci-empty-label {
+    font-size: 13px;
+    color: rgb(170, 170, 170);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    max-width: 420px;
+}
+
+.ci-light .ci-empty-label { color: rgb(80, 80, 80); }
+
+/* Side panel */
+
+.ci-sidepanel {
+    min-width: 200px;
+    padding: 6px;
+}
+
+.ci-sidepanel-title {
+    -unity-font-style: bold;
+    font-size: 13px;
+    margin-bottom: 2px;
+}
+
+.ci-sidepanel-sub {
+    font-size: 10px;
+    color: rgb(160, 160, 160);
+    margin-bottom: 6px;
+}
+
+.ci-sidepanel-section {
+    -unity-font-style: bold;
+    font-size: 11px;
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
+.ci-edge-entry {
+    font-size: 10px;
+    padding-left: 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+
+.ci-edge-entry:hover {
+    background-color: rgba(80, 140, 220, 0.25);
+}
+
+/* Scene view: GameObject and Asset nodes */
+
+.ci-node-gameobject > .ci-node-header .ci-node-strip { background-color: rgb(90, 160, 90); }
+.ci-node-asset > .ci-node-header .ci-node-strip { background-color: rgb(160, 110, 200); }
+
+.ci-node-asset {
+    width: 200px;
+}
+
+.ci-node-inactive {
+    opacity: 0.5;
+}
+
+.ci-node-comps {
+    margin-left: 12px;
+    margin-bottom: 4px;
+}
+
+.ci-comp-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 1px;
+}
+
+.ci-comp-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+}
+
+.ci-comp-name {
+    font-size: 10px;
+    color: rgb(200, 200, 200);
+    flex-grow: 1;
+}
+
+.ci-light .ci-comp-name { color: rgb(50, 50, 50); }
+
+.ci-comp-user {
+    -unity-font-style: bold;
+    color: rgb(235, 235, 235);
+}
+
+.ci-light .ci-comp-user { color: rgb(20, 20, 20); }
+
+.ci-comp-disabled {
+    -unity-font-style: italic;
+    color: rgb(140, 140, 140);
+}
+
+.ci-comp-badges {
+    flex-direction: row;
+}
+
+.ci-badge-broken { background-color: rgb(200, 60, 60); }
+
+.ci-node-pulse {
+    border-color: rgb(255, 210, 90);
+    background-color: rgba(255, 210, 90, 0.18);
+}
+
+.ci-comp-flash {
+    background-color: rgba(255, 210, 90, 0.35);
+    border-radius: 3px;
+}
+
+.ci-tweak {
+    flex-shrink: 0;
+    margin-bottom: 4px;
+}
+
+.ci-tweak-foldout {
+    margin-left: 2px;
+}
+
+.ci-tweak-inspector {
+    margin-left: 12px;
+    border-left-width: 1px;
+    border-left-color: rgba(128, 128, 128, 0.35);
+    padding-left: 4px;
+}
+
+.ci-tweak-enabled {
+    margin-left: 6px;
+}
+
+.ci-tweak-dropdown {
+    margin: 2px 4px;
+}
+
+.ci-live-pill {
+    color: rgb(255, 80, 70);
+    -unity-font-style: bold;
+    margin-left: 8px;
+    margin-right: 4px;
+}
+
+.ci-edge-firecount {
+    font-size: 10px;
+    color: rgb(255, 220, 120);
+    background-color: rgba(20, 20, 20, 0.8);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+
+.ci-tweak-revert {
+    font-size: 10px;
+    margin-left: 6px;
+}
