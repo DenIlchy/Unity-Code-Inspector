@@ -18,5 +18,5 @@ https://github.com/DenIlchy/Unity-Code-Inspector
 - In Play Mode (`● LIVE`): nodes pulse on value changes, UnityEvent edges
   flash with fire counters, and trigger/collision contacts appear as
   transient edges.
-- Import the **Demo** sample from Package Manager → Samples to try it in a
-  ready-made scene.
+
+Made by Denid.

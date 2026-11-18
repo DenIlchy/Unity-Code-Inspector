@@ -27,15 +27,13 @@ namespace Denid.CodeInspector.Editor
         public Func<Assembly, bool> AssemblyFilter;
 
         internal const string OwnAssemblyPrefix = "Denid.CodeInspector";
-        internal const string DemoAssemblyPrefix = "Denid.CodeInspector.Demo";
 
         internal static bool IsOwnAssembly(Assembly assembly)
         {
             if (assembly == null)
                 return false;
             var name = assembly.GetName().Name;
-            return name.StartsWith(OwnAssemblyPrefix, StringComparison.Ordinal) &&
-                   !name.StartsWith(DemoAssemblyPrefix, StringComparison.Ordinal);
+            return name.StartsWith(OwnAssemblyPrefix, StringComparison.Ordinal);
         }
 
         /// <summary>

@@ -1,5 +1,7 @@
 # Code Inspector
 
+*Made by **Denid** — [github.com/DenIlchy](https://github.com/DenIlchy)*
+
 Code Inspector is a Unity 6 editor tool that maps your scripts and scenes as an
 interactive graph. It draws how scripts connect — field references, method
 calls, `GetComponent` lookups, inheritance, UnityEvents, triggers and C# event
@@ -41,10 +43,14 @@ Or manual: copy `Packages/com.denid.codeinspector` into your project's
 
 ## Quick start
 
-1. Open **Window > Code Inspector**.
-2. Import the demo: Package Manager → Code Inspector → **Samples** → *Demo* →
-   Import, then open `Assets/Samples/Code Inspector/0.1.0/Demo/Demo.unity`.
-3. Switch between **Architecture** and **Scene** with the toolbar toggles.
+1. Install the package (see [Install](#install)).
+2. Open **Window > Code Inspector**.
+3. Open any scene with your scripts.
+4. Use the **Architecture** toggle for a type-level graph or **Scene** for
+   objects in open scenes.
+5. Select a node to see its connections and tweak its Parameters in the side
+   panel.
+6. Press Play to see the Live view in action.
 
 ## Views
 
@@ -145,9 +151,10 @@ While playing (toolbar shows `● LIVE`):
 - **Diagnostics** — scanner warnings (missing scripts, truncated scans,
   inactive objects) appear in the status bar / diagnostics list.
 
-## Screenshots
+## Author
 
-<!-- TODO: add screenshots (docs/images/) -->
+Made by **Denid** ([@DenIlchy](https://github.com/DenIlchy)). Issues and
+suggestions: https://github.com/DenIlchy/Unity-Code-Inspector/issues
 
 ## License
 

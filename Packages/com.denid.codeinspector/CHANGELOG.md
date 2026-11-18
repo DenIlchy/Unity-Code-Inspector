@@ -17,4 +17,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Change visualization: nodes pulse when their values change (including edits made in Unity's own Inspector).
 - Live Play Mode view: live value tracking, UnityEvent edge flashing with fire counters, trigger/collision contact probes with transient edges, and `● LIVE` indicator.
 - Play Mode tweak log: records Inspector edits during play and offers a keep-changes dialog on exit (Ask / Always Keep / Always Discard preference).
-- Demo sample: scene with player, enemies, spawner, trigger zone, HUD and a ScriptableObject config.
+

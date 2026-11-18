@@ -6,7 +6,8 @@
   "unity": "6000.0",
   "license": "MIT",
   "author": {
-    "name": "denid"
+    "name": "Denid",
+    "url": "https://github.com/DenIlchy"
   },
   "keywords": [
     "editor",
@@ -22,12 +23,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/DenIlchy/Unity-Code-Inspector.git"
-  },
-  "samples": [
-    {
-      "displayName": "Demo",
-      "description": "Small demo scene (player, enemies, spawner, trigger zone, HUD) for Code Inspector.",
-      "path": "Samples~/Demo"
-    }
-  ]
+  }
 }
