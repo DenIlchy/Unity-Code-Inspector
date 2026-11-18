@@ -17,6 +17,7 @@ namespace Denid.CodeInspector.Editor
         const int WatchBudgetPerTick = 40;
         const int MaxWatchedProperties = 64;
         const int RingSize = 20;
+        const int ContactRingSize = 200;
         const float PulseCooldown = 0.5f;
         const double SlowTickMs = 5.0;
         const float TransientEdgeTtl = 2f;
@@ -27,6 +28,16 @@ namespace Denid.CodeInspector.Editor
             public Component Component;
             public SerializedObject So;
             public List<ValueSnapshot.FieldValue> Snapshot;
+        }
+
+        /// <summary>A recorded trigger/collision contact.</summary>
+        public struct ContactEntry
+        {
+            /// <summary>"go:<instanceId>" of the other object, or null.</summary>
+            public string OtherId;
+            public string OtherName;
+            public string Message;
+            public float Time;
         }
 
         class TransientEdge
@@ -46,7 +57,8 @@ namespace Denid.CodeInspector.Editor
         readonly Dictionary<string, Queue<string>> eventsLog = new Dictionary<string, Queue<string>>();
         readonly Dictionary<(int, string), int> eventFireCounts =
             new Dictionary<(int, string), int>();
-        readonly Dictionary<string, Queue<string>> contactsLog = new Dictionary<string, Queue<string>>();
+        readonly Dictionary<string, Queue<ContactEntry>> contactsLog =
+            new Dictionary<string, Queue<ContactEntry>>();
         readonly Dictionary<string, int> contactCounts = new Dictionary<string, int>();
         readonly Dictionary<Component, Queue<string>> changesLog =
             new Dictionary<Component, Queue<string>>();
@@ -256,11 +268,12 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        static Queue<string> Recent<T>(Dictionary<T, Queue<string>> map, T key)
+        static Queue<T> Recent<TK, T>(Dictionary<TK, Queue<T>> map, TK key,
+            int cap = RingSize)
         {
             if (!map.TryGetValue(key, out var q))
-                map[key] = q = new Queue<string>();
-            while (q.Count >= RingSize)
+                map[key] = q = new Queue<T>();
+            while (q.Count >= cap)
                 q.Dequeue();
             return q;
         }
@@ -372,9 +385,14 @@ namespace Denid.CodeInspector.Editor
             var otherId = other != null ? "go:" + other.GetInstanceID() : null;
             if (selfId == null)
                 return;
-            Recent(contactsLog, selfId)
-                .Enqueue((other != null ? other.name : "?") + "  " + message +
-                         "  · " + Time.realtimeSinceStartup.ToString("0.0") + "s");
+            Recent(contactsLog, selfId, ContactRingSize)
+                .Enqueue(new ContactEntry
+                {
+                    OtherId = otherId,
+                    OtherName = other != null ? other.name : "?",
+                    Message = message,
+                    Time = Time.realtimeSinceStartup,
+                });
             Contacted?.Invoke(selfId, otherId, message);
         }
 
@@ -415,14 +433,25 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        public List<string> ContactsFor(string nodeId)
+        /// <summary>Recorded contacts for a node, oldest to newest.</summary>
+        public List<ContactEntry> ContactsFor(string nodeId)
         {
-            var list = contactsLog.TryGetValue(nodeId, out var q)
-                ? new List<string>(q)
-                : new List<string>();
-            if (contactCounts.TryGetValue(nodeId, out var n) && n > 0)
-                list.Add(n + " unmapped contact(s)");
-            return list;
+            return contactsLog.TryGetValue(nodeId, out var q)
+                ? new List<ContactEntry>(q)
+                : new List<ContactEntry>();
+        }
+
+        /// <summary>Contacts that could not be mapped to a graph node.</summary>
+        public int UnmappedContactsFor(string nodeId)
+        {
+            return contactCounts.TryGetValue(nodeId, out var n) ? n : 0;
+        }
+
+        /// <summary>Drops recorded contacts and the unmapped counter for a node.</summary>
+        public void ClearContacts(string nodeId)
+        {
+            contactsLog.Remove(nodeId);
+            contactCounts.Remove(nodeId);
         }
 
         /// <summary>Recent value-change lines for a node (all its watched components).</summary>

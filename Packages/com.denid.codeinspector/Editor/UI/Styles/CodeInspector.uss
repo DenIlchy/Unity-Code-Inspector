@@ -260,7 +260,22 @@
 
 .ci-sidepanel {
     min-width: 200px;
+}
+
+.ci-sidepanel-scroll {
+    flex-grow: 1;
     padding: 6px;
+}
+
+.ci-sidepanel-foldout {
+    flex-shrink: 0;
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
+.ci-sidepanel-foldout .unity-toggle__text {
+    -unity-font-style: bold;
+    font-size: 11px;
 }
 
 .ci-sidepanel-title {
@@ -405,4 +420,116 @@
 .ci-tweak-revert {
     font-size: 10px;
     margin-left: 6px;
+}
+
+/* Contacts console */
+
+.ci-console {
+    flex-grow: 1;
+    border-top-width: 1px;
+    border-top-color: rgb(30, 30, 30);
+}
+
+.ci-light .ci-console {
+    border-top-color: rgb(140, 140, 140);
+}
+
+.ci-console-header {
+    background-color: rgb(50, 50, 50);
+    min-height: 20px;
+    flex-shrink: 0;
+}
+
+.ci-light .ci-console-header {
+    background-color: rgb(175, 175, 175);
+}
+
+.ci-console-title {
+    -unity-font-style: bold;
+    font-size: 11px;
+    -unity-text-align: middle-left;
+    margin-left: 6px;
+}
+
+.ci-console-count {
+    font-size: 10px;
+    color: rgb(180, 180, 180);
+    -unity-text-align: middle-left;
+    margin-left: 8px;
+}
+
+.ci-light .ci-console-count {
+    color: rgb(60, 60, 60);
+}
+
+.ci-console-body {
+    flex-grow: 1;
+}
+
+.ci-console-empty {
+    font-size: 10px;
+    color: rgb(160, 160, 160);
+    margin: 4px 8px;
+}
+
+.ci-light .ci-console-empty {
+    color: rgb(80, 80, 80);
+}
+
+.ci-console-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+.ci-console-row-alt {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.ci-light .ci-console-row-alt {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.ci-console-row-linked:hover {
+    background-color: rgba(80, 140, 220, 0.25);
+}
+
+.ci-console-time {
+    width: 44px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: rgb(150, 150, 150);
+}
+
+.ci-console-msg {
+    font-size: 10px;
+    margin-right: 8px;
+}
+
+.ci-console-enter {
+    color: rgb(130, 210, 130);
+}
+
+.ci-light .ci-console-enter {
+    color: rgb(30, 120, 40);
+}
+
+.ci-console-exit {
+    color: rgb(235, 160, 90);
+}
+
+.ci-light .ci-console-exit {
+    color: rgb(160, 90, 10);
+}
+
+.ci-console-name {
+    font-size: 10px;
+    color: rgb(200, 200, 200);
+}
+
+.ci-light .ci-console-name {
+    color: rgb(40, 40, 40);
 }

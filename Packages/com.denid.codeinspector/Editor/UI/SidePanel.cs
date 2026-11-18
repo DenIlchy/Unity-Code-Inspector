@@ -11,22 +11,33 @@ namespace Denid.CodeInspector.Editor
     /// </summary>
     public sealed class SidePanel : VisualElement
     {
+        static readonly Dictionary<string, bool> expandedSections =
+            new Dictionary<string, bool>();
+
+        internal static void ResetExpandedSections() => expandedSections.Clear();
+
         /// <summary>Navigate within the currently visible graph.</summary>
         public event Action<string> NavigateToNode;
         /// <summary>Navigate to a node in the Scene view (switches view).</summary>
         public event Action<string> NavigateToSceneNode;
 
+        readonly ScrollView scroll;
         readonly Label titleLabel;
         readonly Label subtitleLabel;
         readonly VisualElement badgesBox;
         readonly VisualElement infoBox;
-        readonly ScrollView usesList;
-        readonly ScrollView usedByList;
+        readonly Foldout usesFoldout;
+        readonly Foldout usedByFoldout;
+        readonly VisualElement usesList;
+        readonly VisualElement usedByList;
         readonly VisualElement contentBox;
         readonly Label emptyLabel;
         readonly TweakSection tweak;
         readonly VisualElement liveBox;
+        readonly Foldout liveFoldout;
+        readonly Foldout eventsFoldout;
         readonly VisualElement liveLinesBox;
+        readonly VisualElement eventsLinesBox;
         readonly VisualElement tweaksBox;
         string liveNodeId;
         string tweaksSignature;
@@ -47,7 +58,6 @@ namespace Denid.CodeInspector.Editor
         /// <summary>Play Mode live data providers (set by the window).</summary>
         public Func<GraphNode, List<string>> LiveChangesProvider;
         public Func<GraphNode, List<string>> LiveEventsProvider;
-        public Func<GraphNode, List<string>> LiveContactsProvider;
         public Func<GraphNode, List<TweakRecord>> TweaksProvider;
         public Action<TweakRecord, GraphNode> TweakRevertRequested;
 
@@ -55,13 +65,18 @@ namespace Denid.CodeInspector.Editor
         {
             AddToClassList("ci-sidepanel");
 
+            scroll = new ScrollView();
+            scroll.AddToClassList("ci-sidepanel-scroll");
+            Add(scroll);
+
             emptyLabel = new Label("Select a node to see its connections.");
             emptyLabel.AddToClassList("ci-sidepanel-sub");
-            Add(emptyLabel);
+            scroll.Add(emptyLabel);
 
             contentBox = new VisualElement();
             contentBox.style.display = DisplayStyle.None;
-            Add(contentBox);
+            contentBox.style.flexShrink = 0f;
+            scroll.Add(contentBox);
 
             titleLabel = new Label();
             titleLabel.AddToClassList("ci-sidepanel-title");
@@ -79,26 +94,56 @@ namespace Denid.CodeInspector.Editor
             contentBox.Add(tweak);
 
             liveBox = new VisualElement();
+            liveBox.style.flexShrink = 0f;
+            liveFoldout = SectionFoldout("Live values");
             liveLinesBox = new VisualElement();
-            liveBox.Add(liveLinesBox);
+            liveFoldout.Add(liveLinesBox);
+            liveBox.Add(liveFoldout);
+            eventsFoldout = SectionFoldout("Events fired");
+            eventsLinesBox = new VisualElement();
+            eventsFoldout.Add(eventsLinesBox);
+            liveBox.Add(eventsFoldout);
             tweaksBox = new VisualElement();
+            tweaksBox.style.flexShrink = 0f;
             liveBox.Add(tweaksBox);
             contentBox.Add(liveBox);
 
             infoBox = new VisualElement();
+            infoBox.style.flexShrink = 0f;
             contentBox.Add(infoBox);
 
-            var usesHeader = new Label("Uses →");
-            usesHeader.AddToClassList("ci-sidepanel-section");
-            contentBox.Add(usesHeader);
-            usesList = new ScrollView();
-            contentBox.Add(usesList);
+            usesFoldout = SectionFoldout("Uses →");
+            usesList = new VisualElement();
+            usesFoldout.Add(usesList);
+            contentBox.Add(usesFoldout);
 
-            var usedByHeader = new Label("Used by ←");
-            usedByHeader.AddToClassList("ci-sidepanel-section");
-            contentBox.Add(usedByHeader);
-            usedByList = new ScrollView();
-            contentBox.Add(usedByList);
+            usedByFoldout = SectionFoldout("Used by ←");
+            usedByList = new VisualElement();
+            usedByFoldout.Add(usedByList);
+            contentBox.Add(usedByFoldout);
+        }
+
+        static bool SectionExpanded(string key) =>
+            !expandedSections.TryGetValue(key, out var v) || v;
+
+        static Foldout SectionFoldout(string key) => SectionFoldout(key, key);
+
+        static Foldout SectionFoldout(string key, string title)
+        {
+            var foldout = new Foldout { text = title, value = SectionExpanded(key) };
+            foldout.AddToClassList("ci-sidepanel-foldout");
+            foldout.userData = key;
+            foldout.RegisterValueChangedCallback(e => expandedSections[key] = e.newValue);
+            return foldout;
+        }
+
+        static void PersistFoldoutStates(VisualElement root)
+        {
+            foreach (var f in root.Query<Foldout>(className: "ci-sidepanel-foldout").ToList())
+            {
+                if (f.userData is string key)
+                    expandedSections[key] = f.value;
+            }
         }
 
         public void SetContext(CodeGraph graph, GraphFilterResult filtered,
@@ -115,6 +160,7 @@ namespace Denid.CodeInspector.Editor
         {
             currentNodeId = nodeId;
             liveNodeId = null;
+            PersistFoldoutStates(this);
             usesList.Clear();
             usedByList.Clear();
             badgesBox.Clear();
@@ -167,15 +213,13 @@ namespace Denid.CodeInspector.Editor
             liveNodeId = currentNodeId;
 
             GraphNode node = null;
-            var entries = new List<(bool Header, string Text)>();
-            if (graph != null && currentNodeId != null &&
-                graph.Nodes.TryGetValue(currentNodeId, out node))
-            {
-                CollectLiveSection(entries, "Live values", LiveChangesProvider?.Invoke(node));
-                CollectLiveSection(entries, "Events fired", LiveEventsProvider?.Invoke(node));
-                CollectLiveSection(entries, "Contacts", LiveContactsProvider?.Invoke(node));
-            }
-            ReconcileLines(entries);
+            if (graph != null && currentNodeId != null)
+                graph.Nodes.TryGetValue(currentNodeId, out node);
+
+            ReconcileSection(liveFoldout, liveLinesBox,
+                node != null ? LiveChangesProvider?.Invoke(node) : null);
+            ReconcileSection(eventsFoldout, eventsLinesBox,
+                node != null ? LiveEventsProvider?.Invoke(node) : null);
 
             var tweaks = node != null ? TweaksProvider?.Invoke(node) : null;
             var sig = TweakSignature(tweaks);
@@ -186,42 +230,37 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        void ReconcileLines(List<(bool Header, string Text)> entries)
+        static void ReconcileSection(Foldout foldout, VisualElement host, List<string> lines)
+        {
+            if (lines == null || lines.Count == 0)
+            {
+                foldout.style.display = DisplayStyle.None;
+                return;
+            }
+            foldout.style.display = DisplayStyle.Flex;
+            ReconcileLines(host, lines);
+        }
+
+        static void ReconcileLines(VisualElement host, List<string> lines)
         {
             var i = 0;
-            for (; i < entries.Count; i++)
+            for (; i < lines.Count; i++)
             {
-                var cls = entries[i].Header ? "ci-sidepanel-section" : "ci-edge-entry";
-                if (i < liveLinesBox.childCount)
+                if (i < host.childCount)
                 {
-                    var label = (Label)liveLinesBox[i];
-                    if (label.text != entries[i].Text)
-                        label.text = entries[i].Text;
-                    if (!label.ClassListContains(cls))
-                    {
-                        label.ClearClassList();
-                        label.AddToClassList(cls);
-                    }
+                    var label = (Label)host[i];
+                    if (label.text != lines[i])
+                        label.text = lines[i];
                 }
                 else
                 {
-                    var label = new Label(entries[i].Text);
-                    label.AddToClassList(cls);
-                    liveLinesBox.Add(label);
+                    var label = new Label(lines[i]);
+                    label.AddToClassList("ci-edge-entry");
+                    host.Add(label);
                 }
             }
-            while (liveLinesBox.childCount > entries.Count)
-                liveLinesBox.RemoveAt(liveLinesBox.childCount - 1);
-        }
-
-        static void CollectLiveSection(List<(bool, string)> entries, string title,
-            List<string> lines)
-        {
-            if (lines == null || lines.Count == 0)
-                return;
-            entries.Add((true, title));
-            foreach (var line in lines)
-                entries.Add((false, line));
+            while (host.childCount > lines.Count)
+                host.RemoveAt(host.childCount - 1);
         }
 
         static string TweakSignature(List<TweakRecord> tweaks)
@@ -241,12 +280,13 @@ namespace Denid.CodeInspector.Editor
 
         void RebuildTweaks(GraphNode node, List<TweakRecord> tweaks)
         {
+            PersistFoldoutStates(tweaksBox);
             tweaksBox.Clear();
             if (node == null || tweaks == null || tweaks.Count == 0)
                 return;
-            var h = new Label("Play Mode changes (" + tweaks.Count + ")");
-            h.AddToClassList("ci-sidepanel-section");
-            tweaksBox.Add(h);
+            var foldout = SectionFoldout("Play Mode changes",
+                "Play Mode changes (" + tweaks.Count + ")");
+            tweaksBox.Add(foldout);
             foreach (var rec in tweaks)
             {
                 var row = new VisualElement();
@@ -266,7 +306,7 @@ namespace Denid.CodeInspector.Editor
                 if (reverted)
                     revert.SetEnabled(false);
                 row.Add(revert);
-                tweaksBox.Add(row);
+                foldout.Add(row);
             }
         }
 
@@ -281,18 +321,18 @@ namespace Denid.CodeInspector.Editor
             return s;
         }
 
-        void SectionHeader(string text)
+        Foldout SectionHeader(string text)
         {
-            var h = new Label(text);
-            h.AddToClassList("ci-sidepanel-section");
-            infoBox.Add(h);
+            var foldout = SectionFoldout(text);
+            infoBox.Add(foldout);
+            return foldout;
         }
 
         void BuildGameObjectInfo(GraphNode node)
         {
             if (node.Components != null && node.Components.Count > 0)
             {
-                SectionHeader("Components");
+                var section = SectionHeader("Components");
                 foreach (var c in node.Components)
                 {
                     var row = new Label(
@@ -305,7 +345,7 @@ namespace Denid.CodeInspector.Editor
                         if (type != null)
                             ScriptLocator.Ping(type);
                     });
-                    infoBox.Add(row);
+                    section.Add(row);
                 }
             }
 
@@ -321,14 +361,14 @@ namespace Denid.CodeInspector.Editor
             }
             if (eventEdges.Count > 0)
             {
-                SectionHeader("Events");
+                var section = SectionHeader("Events");
                 foreach (var e in eventEdges)
                 {
                     var row = new Label(e.Label);
                     row.AddToClassList("ci-edge-entry");
                     var target = e.ToId;
                     row.RegisterCallback<ClickEvent>(_ => NavigateToNode?.Invoke(target));
-                    infoBox.Add(row);
+                    section.Add(row);
                 }
             }
 
@@ -352,12 +392,12 @@ namespace Denid.CodeInspector.Editor
             }
             if (csharp.Count > 0)
             {
-                SectionHeader("C# events");
+                var section = SectionHeader("C# events");
                 foreach (var s in csharp)
                 {
                     var row = new Label(s);
                     row.AddToClassList("ci-edge-entry");
-                    infoBox.Add(row);
+                    section.Add(row);
                 }
             }
 
@@ -384,11 +424,11 @@ namespace Denid.CodeInspector.Editor
             }
             if (messages.Count > 0)
             {
-                SectionHeader("Unity messages");
+                var section = SectionHeader("Unity messages");
                 messages.Sort(StringComparer.Ordinal);
                 var row = new Label(string.Join(", ", messages));
                 row.AddToClassList("ci-edge-entry");
-                infoBox.Add(row);
+                section.Add(row);
             }
         }
 
@@ -413,18 +453,18 @@ namespace Denid.CodeInspector.Editor
             }
             if (instances.Count == 0)
                 return;
-            SectionHeader("Instances in open scenes");
+            var section = SectionHeader("Instances in open scenes");
             foreach (var inst in instances)
             {
                 var row = new Label(inst.Label + (string.IsNullOrEmpty(inst.Caption) ? "" : "  (" + inst.Caption + ")"));
                 row.AddToClassList("ci-edge-entry");
                 var id = inst.Id;
                 row.RegisterCallback<ClickEvent>(_ => NavigateToSceneNode?.Invoke(id));
-                infoBox.Add(row);
+                section.Add(row);
             }
         }
 
-        void FillEdgeList(ScrollView list, string nodeId, bool outgoing)
+        void FillEdgeList(VisualElement list, string nodeId, bool outgoing)
         {
             if (filtered == null)
                 return;

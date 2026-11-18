@@ -105,7 +105,9 @@ dropdown.
 While playing (toolbar shows `● LIVE`):
 
 - Nodes pulse when watched serialized values change; the side panel lists
-  "Live values" (`field old → new · t s ago`), "Events fired" and "Contacts".
+  "Live values" (`field old → new · t s ago`) and "Events fired". A Console
+  docked at the bottom (toolbar toggle) lists the selected GameObject's
+  trigger/collision contacts; click an entry to select the other object.
 - UnityEvent edges flash bright for ~600 ms with a `×N` fire counter at the
   edge midpoint (counters survive graph rebuilds).
 - Trigger/collision contacts draw a transient flashing edge `other → self`

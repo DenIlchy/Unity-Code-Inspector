@@ -49,21 +49,26 @@ namespace Denid.CodeInspector.Editor
         {
             AddToClassList("ci-tweak");
 
-            var header = new Label("Parameters");
-            header.AddToClassList("ci-sidepanel-section");
+            var header = new Foldout
+            {
+                text = "Parameters",
+                value = !expandedByType.TryGetValue("Parameters", out var e) || e,
+            };
+            header.AddToClassList("ci-sidepanel-foldout");
+            header.RegisterValueChangedCallback(evt => expandedByType["Parameters"] = evt.newValue);
             Add(header);
 
             onlyMineToggle = new Toggle("Only my scripts") { value = true };
             onlyMineToggle.AddToClassList("ci-tweak-onlymine");
             onlyMineToggle.RegisterValueChangedCallback(_ => Rebuild());
-            Add(onlyMineToggle);
+            header.Add(onlyMineToggle);
 
             statusLabel = new Label();
             statusLabel.AddToClassList("ci-sidepanel-sub");
-            Add(statusLabel);
+            header.Add(statusLabel);
 
             body = new VisualElement();
-            Add(body);
+            header.Add(body);
 
             style.display = DisplayStyle.None;
         }

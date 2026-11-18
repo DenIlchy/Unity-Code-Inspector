@@ -24,6 +24,8 @@ namespace Denid.CodeInspector.Editor
         [SerializeField] int focusDepth = 1;
         [SerializeField] float panelWidth = 300f;
         [SerializeField] bool showPanel = true;
+        [SerializeField] float consoleHeight = 160f;
+        [SerializeField] bool showConsole = true;
         [SerializeField] bool includePackages;
         [SerializeField] bool includeEditorScripts;
         [SerializeField] bool sceneAutoRefresh = true;
@@ -34,6 +36,9 @@ namespace Denid.CodeInspector.Editor
         GraphCanvas archCanvas;
         GraphCanvas sceneCanvas;
         SidePanel sidePanel;
+        ContactsConsole console;
+        TwoPaneSplitView verticalSplit;
+        VisualElement consolePane;
         VisualElement emptyState;
         Label emptyLabel;
         VisualElement legend;
@@ -234,6 +239,7 @@ namespace Denid.CodeInspector.Editor
                 (change == PlayModeStateChange.EnteredPlayMode ||
                  change == PlayModeStateChange.EnteredEditMode))
                 RebuildScene();
+            UpdateConsoleVisibility();
         }
 
         // ---- Play Mode live view ----------------------------------------------
@@ -253,6 +259,7 @@ namespace Denid.CodeInspector.Editor
                 return;
             liveMonitor.Tick(sceneGraph, sceneCanvas);
             sidePanel?.RefreshLive();
+            console?.Refresh();
         }
 
         void OnLiveUnityEventFired(GraphEdge edge, int count)
@@ -268,6 +275,7 @@ namespace Denid.CodeInspector.Editor
         void OnLiveContact(string selfId, string otherId, string message)
         {
             liveMonitor.HandleContact(selfId, otherId, message, sceneGraph, sceneCanvas);
+            console?.Refresh();
         }
 
         List<TweakRecord> TweaksForNode(GraphNode node)
@@ -351,10 +359,33 @@ namespace Denid.CodeInspector.Editor
             splitView.style.flexGrow = 1f;
             root.Add(splitView);
 
+            verticalSplit = new TwoPaneSplitView(1, Mathf.Max(80f, consoleHeight),
+                TwoPaneSplitViewOrientation.Vertical);
+            verticalSplit.style.flexGrow = 1f;
+            splitView.Add(verticalSplit);
+
             var graphArea = new VisualElement();
             graphArea.style.flexGrow = 1f;
             graphArea.style.overflow = Overflow.Hidden;
-            splitView.Add(graphArea);
+            verticalSplit.Add(graphArea);
+
+            consolePane = new VisualElement();
+            console = new ContactsConsole();
+            console.ContactsProvider = liveMonitor.ContactsFor;
+            console.UnmappedProvider = liveMonitor.UnmappedContactsFor;
+            console.ClearRequested = liveMonitor.ClearContacts;
+            console.EntryClicked += id =>
+            {
+                if (sceneGraph != null && sceneGraph.Nodes.ContainsKey(id))
+                    OnNavigateToSceneNode(id);
+            };
+            consolePane.Add(console);
+            consolePane.RegisterCallback<GeometryChangedEvent>(e =>
+            {
+                if (e.newRect.height > 1f)
+                    consoleHeight = e.newRect.height;
+            });
+            verticalSplit.Add(consolePane);
 
             archCanvas = new GraphCanvas(layoutStore, "Architecture");
             archCanvas.NodeSelected += OnNodeSelected;
@@ -385,7 +416,6 @@ namespace Denid.CodeInspector.Editor
             sidePanel.InspectedObjectChanged += OnInspectedObjectChanged;
             sidePanel.LiveChangesProvider = liveMonitor.ChangesFor;
             sidePanel.LiveEventsProvider = n => liveMonitor.EventsFor(n.Id);
-            sidePanel.LiveContactsProvider = n => liveMonitor.ContactsFor(n.Id);
             sidePanel.TweaksProvider = TweaksForNode;
             sidePanel.TweakRevertRequested = OnTweakRevert;
             splitView.Add(sidePanel);
@@ -404,6 +434,7 @@ namespace Denid.CodeInspector.Editor
             if (view == (int)View.Scene)
                 RebuildScene();
             UpdateSceneToolbarVisibility();
+            UpdateConsoleVisibility();
 
             liveMonitor.UnityEventFired += OnLiveUnityEventFired;
             liveMonitor.NodePulse += id => ActiveCanvas?.PulseNode(id);
@@ -513,6 +544,14 @@ namespace Denid.CodeInspector.Editor
             });
             toolbar.Add(panelToggle);
 
+            var consoleToggle = new ToolbarToggle { text = "Console", value = showConsole };
+            consoleToggle.RegisterValueChangedCallback(e =>
+            {
+                showConsole = e.newValue;
+                UpdateConsoleVisibility();
+            });
+            toolbar.Add(consoleToggle);
+
             livePill = new Label("● LIVE");
             livePill.AddToClassList("ci-live-pill");
             livePill.style.display = DisplayStyle.None;
@@ -609,6 +648,8 @@ namespace Denid.CodeInspector.Editor
             if (sceneCanvas != null)
                 sceneCanvas.style.display = v == View.Scene ? DisplayStyle.Flex : DisplayStyle.None;
             UpdateSceneToolbarVisibility();
+            UpdateConsoleVisibility();
+            SyncConsoleNode();
             if (v == View.Scene)
             {
                 if (sceneGraph == null)
@@ -627,6 +668,30 @@ namespace Denid.CodeInspector.Editor
             if (autoRefreshToggle != null) autoRefreshToggle.style.display = d;
             if (syncSelectionToggle != null) syncSelectionToggle.style.display = d;
             if (showAllToggle != null) showAllToggle.style.display = d;
+        }
+
+        void UpdateConsoleVisibility()
+        {
+            if (verticalSplit == null)
+                return;
+            var show = showConsole && EditorApplication.isPlaying &&
+                       view == (int)View.Scene;
+            if (show)
+                verticalSplit.UnCollapse();
+            else
+                verticalSplit.CollapseChild(1);
+        }
+
+        void SyncConsoleNode()
+        {
+            if (console == null)
+                return;
+            GraphNode node = null;
+            var g = ActiveGraph;
+            var id = ActiveCanvas?.SelectedNodeId;
+            if (view == (int)View.Scene && g != null && id != null)
+                g.Nodes.TryGetValue(id, out node);
+            console.SetNode(node);
         }
 
         void Refresh()
@@ -729,6 +794,7 @@ namespace Denid.CodeInspector.Editor
         void SyncSidePanelAndStatus()
         {
             sidePanel?.SetContext(ActiveGraph, ActiveFiltered, typeGraph, sceneGraph);
+            SyncConsoleNode();
             UpdateStatus();
         }
 
@@ -794,6 +860,7 @@ namespace Denid.CodeInspector.Editor
         void OnNodeSelected(string nodeId)
         {
             sidePanel?.ShowNode(nodeId);
+            SyncConsoleNode();
             if (focusOn)
             {
                 // Re-bind keeps the selected NodeView; it does not re-raise
