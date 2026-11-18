@@ -56,5 +56,21 @@ namespace Denid.CodeInspector.Editor.Tests
             var store = new LayoutStore(tempPath);
             Assert.IsFalse(store.TryGet("Architecture", "anything", out _));
         }
+
+        [Test]
+        public void PruneRemovesStaleEntries()
+        {
+            var store = new LayoutStore(tempPath);
+            store.Set("v", "go:1", Vector2.one);
+            store.Set("v", "type:System.String, mscorlib", Vector2.one);
+            store.Set("v", "type:Nope.Missing, Nope", Vector2.one);
+
+            Assert.AreEqual(2, store.Prune(LayoutPruning.IsStale));
+
+            var store2 = new LayoutStore(tempPath);
+            Assert.IsTrue(store2.TryGet("v", "type:System.String, mscorlib", out _));
+            Assert.IsFalse(store2.TryGet("v", "go:1", out _));
+            Assert.IsFalse(store2.TryGet("v", "type:Nope.Missing, Nope", out _));
+        }
     }
 }

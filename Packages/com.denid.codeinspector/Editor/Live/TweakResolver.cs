@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -32,34 +33,39 @@ namespace Denid.CodeInspector.Editor
             var viaId = ResolveByGlobalId(r.GlobalObjectId);
             if (viaId != null)
                 return viaId;
-            return ResolveByLocator(r.ScenePath, r.HierarchyPath, r.TargetTypeName, r.ComponentIndex);
+            return ResolveByLocator(r.ScenePath, r.HierarchyPath, r.TargetTypeName,
+                r.ComponentIndex, r.SiblingPath);
         }
 
         /// <summary>Scene path + hierarchy path + component type + index → object.</summary>
         public static Object ResolveByLocator(string scenePath, string hierarchyPath,
-            string targetTypeName, int componentIndex)
+            string targetTypeName, int componentIndex, string siblingPath = null)
         {
             if (string.IsNullOrEmpty(hierarchyPath) || string.IsNullOrEmpty(targetTypeName))
                 return null;
-            var go = FindGameObject(scenePath, hierarchyPath);
-            if (go == null)
-                return null;
             var type = Type.GetType(targetTypeName);
-            if (type == null || type == typeof(GameObject))
-                return type == typeof(GameObject) ? go : null;
-            var index = 0;
-            foreach (var c in go.GetComponents<Component>())
+            if (type == null)
+                return null;
+            foreach (var go in FindGameObjects(scenePath, hierarchyPath, siblingPath))
             {
-                if (c == null || c.GetType() != type)
-                    continue;
-                if (index++ == componentIndex)
-                    return c;
+                if (type == typeof(GameObject))
+                    return go;
+                var index = 0;
+                foreach (var c in go.GetComponents<Component>())
+                {
+                    if (c == null || c.GetType() != type)
+                        continue;
+                    if (index++ == componentIndex)
+                        return c;
+                }
             }
             return null;
         }
 
-        static GameObject FindGameObject(string scenePath, string hierarchyPath)
+        static List<GameObject> FindGameObjects(string scenePath, string hierarchyPath,
+            string siblingPath)
         {
+            var result = new List<GameObject>();
             for (var i = 0; i < SceneManager.sceneCount; i++)
             {
                 var scene = SceneManager.GetSceneAt(i);
@@ -67,38 +73,72 @@ namespace Denid.CodeInspector.Editor
                     continue;
                 if (!string.IsNullOrEmpty(scenePath) && scene.path != scenePath)
                     continue;
-                var found = FindInScene(scene, hierarchyPath);
-                if (found != null)
-                    return found;
+                FindInScene(scene, hierarchyPath, siblingPath, result);
+                if (result.Count > 0)
+                    break;
             }
-            return null;
+            return result;
         }
 
-        static GameObject FindInScene(Scene scene, string hierarchyPath)
+        static void FindInScene(Scene scene, string hierarchyPath, string siblingPath,
+            List<GameObject> result)
         {
-            var parts = hierarchyPath.Split('/');
+            var indices = ParseSiblingPath(siblingPath);
+            if (indices != null)
+            {
+                var found = WalkByIndices(scene, indices);
+                if (found != null && TweakLog.HierarchyPath(found) == hierarchyPath)
+                {
+                    result.Add(found.gameObject);
+                    return;
+                }
+            }
             foreach (var root in scene.GetRootGameObjects())
-            {
-                var found = Walk(root.transform, parts, 0);
-                if (found != null)
-                    return found;
-            }
-            return null;
+                CollectMatches(root.transform, root.name, hierarchyPath, result);
         }
 
-        static GameObject Walk(Transform t, string[] parts, int depth)
+        static int[] ParseSiblingPath(string siblingPath)
         {
-            if (t.name != parts[depth])
+            if (string.IsNullOrEmpty(siblingPath))
                 return null;
-            if (depth == parts.Length - 1)
-                return t.gameObject;
-            foreach (Transform child in t)
+            var parts = siblingPath.Split('/');
+            var indices = new int[parts.Length];
+            for (var i = 0; i < parts.Length; i++)
             {
-                var found = Walk(child, parts, depth + 1);
-                if (found != null)
-                    return found;
+                if (!int.TryParse(parts[i], out indices[i]))
+                    return null;
             }
-            return null;
+            return indices;
+        }
+
+        static Transform WalkByIndices(Scene scene, int[] indices)
+        {
+            if (indices.Length == 0)
+                return null;
+            var roots = scene.GetRootGameObjects();
+            if (indices[0] < 0 || indices[0] >= roots.Length)
+                return null;
+            var t = roots[indices[0]].transform;
+            for (var d = 1; d < indices.Length; d++)
+            {
+                if (indices[d] < 0 || indices[d] >= t.childCount)
+                    return null;
+                t = t.GetChild(indices[d]);
+            }
+            return t;
+        }
+
+        // Name-joining prefix search: names may themselves contain '/'.
+        static void CollectMatches(Transform t, string pathSoFar, string hierarchyPath,
+            List<GameObject> result)
+        {
+            if (pathSoFar == hierarchyPath)
+                result.Add(t.gameObject);
+            var prefix = pathSoFar + "/";
+            if (!hierarchyPath.StartsWith(prefix, StringComparison.Ordinal))
+                return;
+            foreach (Transform child in t)
+                CollectMatches(child, prefix + child.name, hierarchyPath, result);
         }
     }
 }

@@ -27,13 +27,13 @@ directly on the graph.
 Package Manager → `+` → **Add package from git URL…**:
 
 ```
-https://github.com/<github-user>/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector
+https://github.com/DenIlchy/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector
 ```
 
 Pin a version:
 
 ```
-https://github.com/<github-user>/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector#v0.1.0
+https://github.com/DenIlchy/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector#v0.1.0
 ```
 
 Or manual: copy `Packages/com.denid.codeinspector` into your project's

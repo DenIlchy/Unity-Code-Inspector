@@ -122,12 +122,19 @@ namespace Denid.CodeInspector.Editor
         public readonly List<GraphEdge> Edges = new List<GraphEdge>();
         public readonly List<string> Diagnostics = new List<string>();
 
-        readonly HashSet<string> edgeKeys = new HashSet<string>();
-        readonly HashSet<(string From, string To)> nonTypeUsagePairs = new HashSet<(string, string)>();
+        readonly Dictionary<(string From, string To, EdgeKind Kind, string Label), GraphEdge> edgeByKey =
+            new Dictionary<(string, string, EdgeKind, string), GraphEdge>();
+        readonly Dictionary<(string, string), int> pairKinds = new Dictionary<(string, string), int>();
+
+        static readonly Dictionary<Type, string> nodeIds = new Dictionary<Type, string>();
 
         public static string NodeIdFor(Type type)
         {
-            return "type:" + type.AssemblyQualifiedName;
+            if (nodeIds.TryGetValue(type, out var id))
+                return id;
+            id = "type:" + type.AssemblyQualifiedName;
+            nodeIds[type] = id;
+            return id;
         }
 
         public static ScriptCategory CategoryOf(Type type)
@@ -165,31 +172,9 @@ namespace Denid.CodeInspector.Editor
 
         public bool AddEdge(string fromId, string toId, EdgeKind kind, string label, bool approximate = false)
         {
-            var key = fromId + "|" + toId + "|" + kind + "|" + (label ?? string.Empty);
-            if (!edgeKeys.Add(key))
+            var key = (fromId, toId, kind, label ?? string.Empty);
+            if (edgeByKey.ContainsKey(key))
                 return false;
-            if (kind != EdgeKind.TypeUsage)
-                nonTypeUsagePairs.Add((fromId, toId));
-            Edges.Add(new GraphEdge
-            {
-                FromId = fromId,
-                ToId = toId,
-                Kind = kind,
-                Label = label,
-                Approximate = approximate,
-            });
-            return true;
-        }
-
-        /// <summary>Returns the existing edge with this identity, or adds a new one.</summary>
-        public GraphEdge GetOrAddEdge(string fromId, string toId, EdgeKind kind, string label, bool approximate = false)
-        {
-            foreach (var e in Edges)
-            {
-                if (e.FromId == fromId && e.ToId == toId && e.Kind == kind &&
-                    (e.Label ?? string.Empty) == (label ?? string.Empty))
-                    return e;
-            }
             var edge = new GraphEdge
             {
                 FromId = fromId,
@@ -198,24 +183,44 @@ namespace Denid.CodeInspector.Editor
                 Label = label,
                 Approximate = approximate,
             };
+            edgeByKey[key] = edge;
             Edges.Add(edge);
-            edgeKeys.Add(fromId + "|" + toId + "|" + kind + "|" + (label ?? string.Empty));
-            if (kind != EdgeKind.TypeUsage)
-                nonTypeUsagePairs.Add((fromId, toId));
+            RecordPair(fromId, toId, kind);
+            return true;
+        }
+
+        /// <summary>Returns the existing edge with this identity, or adds a new one.</summary>
+        public GraphEdge GetOrAddEdge(string fromId, string toId, EdgeKind kind, string label, bool approximate = false)
+        {
+            var key = (fromId, toId, kind, label ?? string.Empty);
+            if (edgeByKey.TryGetValue(key, out var existing))
+                return existing;
+            var edge = new GraphEdge
+            {
+                FromId = fromId,
+                ToId = toId,
+                Kind = kind,
+                Label = label,
+                Approximate = approximate,
+            };
+            edgeByKey[key] = edge;
+            Edges.Add(edge);
+            RecordPair(fromId, toId, kind);
             return edge;
+        }
+
+        void RecordPair(string fromId, string toId, EdgeKind kind)
+        {
+            var pk = (fromId, toId);
+            pairKinds.TryGetValue(pk, out var mask);
+            pairKinds[pk] = mask | (1 << (int)kind);
         }
 
         /// <summary>True when any edge other than <paramref name="weakerThan"/> links the pair.</summary>
         public bool HasEdgeBetween(string fromId, string toId, EdgeKind weakerThan)
         {
-            if (weakerThan == EdgeKind.TypeUsage)
-                return nonTypeUsagePairs.Contains((fromId, toId));
-            foreach (var e in Edges)
-            {
-                if (e.FromId == fromId && e.ToId == toId && e.Kind != weakerThan)
-                    return true;
-            }
-            return false;
+            return pairKinds.TryGetValue((fromId, toId), out var mask) &&
+                   (mask & ~(1 << (int)weakerThan)) != 0;
         }
 
         public static string FriendlyName(Type type)

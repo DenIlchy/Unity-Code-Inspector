@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine.Events;
@@ -121,6 +122,76 @@ namespace Denid.CodeInspector.Editor
         class Relay3<T0, T1, T2> { public Action Callback; public void Invoke(T0 a, T1 b, T2 c) => Callback?.Invoke(); }
         class Relay4<T0, T1, T2, T3> { public Action Callback; public void Invoke(T0 a, T1 b, T2 c, T3 d) => Callback?.Invoke(); }
 
+        /// <summary>Reflection handles resolved once per concrete event type.</summary>
+        class EventCache
+        {
+            public Type RelayType;
+            public Type DelegateType;
+            public MethodInfo Invoke;
+            public FieldInfo Callback;
+            public MethodInfo AddListener;
+            public MethodInfo RemoveListener;
+        }
+
+        static readonly Dictionary<Type, EventCache> eventCaches =
+            new Dictionary<Type, EventCache>();
+
+        static EventCache CacheFor(Type eventType)
+        {
+            if (eventCaches.TryGetValue(eventType, out var c))
+                return c;
+            eventCaches[eventType] = c = BuildCache(eventType);
+            return c;
+        }
+
+        static EventCache BuildCache(Type eventType)
+        {
+            Type relayType;
+            Type delegateType;
+            if (typeof(UnityEvent).IsAssignableFrom(eventType))
+            {
+                relayType = typeof(Relay0);
+                delegateType = typeof(UnityAction);
+            }
+            else
+            {
+                var generic = GenericEventType(eventType);
+                if (generic == null)
+                    return null;
+                var args = generic.GetGenericArguments();
+                switch (args.Length)
+                {
+                    case 1:
+                        relayType = typeof(Relay1<>).MakeGenericType(args);
+                        delegateType = typeof(UnityAction<>).MakeGenericType(args);
+                        break;
+                    case 2:
+                        relayType = typeof(Relay2<,>).MakeGenericType(args);
+                        delegateType = typeof(UnityAction<,>).MakeGenericType(args);
+                        break;
+                    case 3:
+                        relayType = typeof(Relay3<,,>).MakeGenericType(args);
+                        delegateType = typeof(UnityAction<,,>).MakeGenericType(args);
+                        break;
+                    case 4:
+                        relayType = typeof(Relay4<,,,>).MakeGenericType(args);
+                        delegateType = typeof(UnityAction<,,,>).MakeGenericType(args);
+                        break;
+                    default:
+                        return null;
+                }
+            }
+            return new EventCache
+            {
+                RelayType = relayType,
+                DelegateType = delegateType,
+                Invoke = relayType.GetMethod("Invoke"),
+                Callback = relayType.GetField("Callback"),
+                AddListener = ListenerMethod(eventType, delegateType, "AddListener"),
+                RemoveListener = ListenerMethod(eventType, delegateType, "RemoveListener"),
+            };
+        }
+
         /// <summary>Finds the UnityEvent&lt;T...&gt; base type and its generic args.</summary>
         static Type GenericEventType(Type t)
         {
@@ -139,52 +210,19 @@ namespace Denid.CodeInspector.Editor
 
         static Delegate CreateListener(UnityEventBase evt, Action callback)
         {
-            var type = evt.GetType();
-            if (evt is UnityEvent plain)
-            {
-                var relay = new Relay0 { Callback = callback };
-                return Delegate.CreateDelegate(typeof(UnityAction), relay,
-                    typeof(Relay0).GetMethod("Invoke"));
-            }
-            var generic = GenericEventType(type);
-            if (generic == null)
+            var c = CacheFor(evt.GetType());
+            if (c == null)
                 return null;
-            var args = generic.GetGenericArguments();
-            Type relayType;
-            Type actionType;
-            switch (args.Length)
-            {
-                case 1:
-                    relayType = typeof(Relay1<>).MakeGenericType(args);
-                    actionType = typeof(UnityAction<>).MakeGenericType(args);
-                    break;
-                case 2:
-                    relayType = typeof(Relay2<,>).MakeGenericType(args);
-                    actionType = typeof(UnityAction<,>).MakeGenericType(args);
-                    break;
-                case 3:
-                    relayType = typeof(Relay3<,,>).MakeGenericType(args);
-                    actionType = typeof(UnityAction<,,>).MakeGenericType(args);
-                    break;
-                case 4:
-                    relayType = typeof(Relay4<,,,>).MakeGenericType(args);
-                    actionType = typeof(UnityAction<,,,>).MakeGenericType(args);
-                    break;
-                default:
-                    return null;
-            }
-            var instance = Activator.CreateInstance(relayType);
-            var cbField = relayType.GetField("Callback");
-            cbField.SetValue(instance, callback);
-            return Delegate.CreateDelegate(actionType, instance,
-                relayType.GetMethod("Invoke"));
+            var instance = Activator.CreateInstance(c.RelayType);
+            c.Callback.SetValue(instance, callback);
+            return Delegate.CreateDelegate(c.DelegateType, instance, c.Invoke);
         }
 
-        static MethodInfo AddListenerMethod(Type eventType, Type delegateType)
+        static MethodInfo ListenerMethod(Type eventType, Type delegateType, string name)
         {
             for (var t = eventType; t != null; t = t.BaseType)
             {
-                var m = t.GetMethod("AddListener",
+                var m = t.GetMethod(name,
                     BindingFlags.Instance | BindingFlags.Public,
                     null, new[] { delegateType }, null);
                 if (m != null)
@@ -195,23 +233,12 @@ namespace Denid.CodeInspector.Editor
 
         static void AddListener(UnityEventBase evt, Delegate del)
         {
-            var m = AddListenerMethod(evt.GetType(), del.GetType());
-            m?.Invoke(evt, new object[] { del });
+            CacheFor(evt.GetType())?.AddListener?.Invoke(evt, new object[] { del });
         }
 
         static void RemoveListener(UnityEventBase evt, Delegate del)
         {
-            for (var t = evt.GetType(); t != null; t = t.BaseType)
-            {
-                var m = t.GetMethod("RemoveListener",
-                    BindingFlags.Instance | BindingFlags.Public,
-                    null, new[] { del.GetType() }, null);
-                if (m != null)
-                {
-                    m.Invoke(evt, new object[] { del });
-                    return;
-                }
-            }
+            CacheFor(evt.GetType())?.RemoveListener?.Invoke(evt, new object[] { del });
         }
     }
 }

@@ -32,14 +32,15 @@ namespace Denid.CodeInspector.Editor
                 return list;
             var it = so.GetIterator();
             var guard = 0;
-            while (it.NextVisible(true) && guard++ < maxProperties)
+            var enter = true;
+            while (it.NextVisible(enter) && guard++ < maxProperties)
             {
                 var path = it.propertyPath;
-                if (path == "m_Script")
-                    continue;
                 var text = PropertyValueCodec.ReadLeaf(it);
-                if (text != null)
-                    list.Add(new FieldValue { Path = path, Text = text });
+                enter = text == null;
+                if (path == "m_Script" || text == null)
+                    continue;
+                list.Add(new FieldValue { Path = path, Text = text });
             }
             list.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
             return list;

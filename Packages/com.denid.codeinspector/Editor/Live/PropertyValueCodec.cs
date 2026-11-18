@@ -41,12 +41,11 @@ namespace Denid.CodeInspector.Editor
                         var v3 = p.vector3Value;
                         return F(v3.x) + "," + F(v3.y) + "," + F(v3.z);
                     case SerializedPropertyType.Vector4:
+                        var v4 = p.vector4Value;
+                        return F(v4.x) + "," + F(v4.y) + "," + F(v4.z) + "," + F(v4.w);
                     case SerializedPropertyType.Quaternion:
                         var q = p.quaternionValue;
-                        var v4 = p.propertyType == SerializedPropertyType.Vector4
-                            ? p.vector4Value
-                            : new Vector4(q.x, q.y, q.z, q.w);
-                        return F(v4.x) + "," + F(v4.y) + "," + F(v4.z) + "," + F(v4.w);
+                        return F(q.x) + "," + F(q.y) + "," + F(q.z) + "," + F(q.w);
                     case SerializedPropertyType.Color:
                         var c = p.colorValue;
                         return F(c.r) + "," + F(c.g) + "," + F(c.b) + "," + F(c.a);

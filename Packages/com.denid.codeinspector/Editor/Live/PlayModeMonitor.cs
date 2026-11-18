@@ -38,6 +38,8 @@ namespace Denid.CodeInspector.Editor
         readonly List<Watcher> watchers = new List<Watcher>();
         readonly Dictionary<(int, string), UnityEventRelay.Registration> relays =
             new Dictionary<(int, string), UnityEventRelay.Registration>();
+        readonly Dictionary<(int, string), List<GraphEdge>> relayEdges =
+            new Dictionary<(int, string), List<GraphEdge>>();
         readonly HashSet<int> probedGos = new HashSet<int>();
         readonly List<TransientEdge> transientEdges = new List<TransientEdge>();
         readonly Dictionary<string, float> lastPulseAt = new Dictionary<string, float>();
@@ -94,6 +96,7 @@ namespace Denid.CodeInspector.Editor
             foreach (var kv in relays)
                 UnityEventRelay.Unregister(kv.Value);
             relays.Clear();
+            relayEdges.Clear();
             probedGos.Clear();
             transientEdges.Clear();
             eventsLog.Clear();
@@ -179,8 +182,18 @@ namespace Denid.CodeInspector.Editor
                 }
             }
 
+            for (var i = watchers.Count - 1; i >= 0; i--)
+            {
+                if (watchers[i].Component == null)
+                {
+                    changesLog.Remove(watchers[i].Component);
+                    watchers.RemoveAt(i);
+                }
+            }
+
             var processed = 0;
             var n = watchers.Count;
+            watchCursor = n == 0 ? 0 : watchCursor % n;
             for (var k = 0; k < n && processed < WatchBudgetPerTick; k++)
             {
                 var w = watchers[(watchCursor + k) % n];
@@ -257,6 +270,7 @@ namespace Denid.CodeInspector.Editor
         void SyncRelays(CodeGraph graph)
         {
             var seen = new HashSet<(int, string)>();
+            relayEdges.Clear();
             foreach (var e in graph.Edges)
             {
                 if (e.Kind != EdgeKind.UnityEventBinding || e.SourceObject == null ||
@@ -264,11 +278,13 @@ namespace Denid.CodeInspector.Editor
                     continue;
                 var key = (e.SourceObject.GetInstanceID(), e.EventPath);
                 seen.Add(key);
+                if (!relayEdges.TryGetValue(key, out var edges))
+                    relayEdges[key] = edges = new List<GraphEdge>();
+                edges.Add(e);
                 if (relays.ContainsKey(key))
                     continue;
-                var edge = e;
                 var reg = UnityEventRelay.Register(e.SourceObject, e.EventPath,
-                    (_, __) => OnUnityEventFired(edge));
+                    (_, __) => OnUnityEventFired(key));
                 if (reg != null)
                     relays[key] = reg;
             }
@@ -285,14 +301,18 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        void OnUnityEventFired(GraphEdge edge)
+        void OnUnityEventFired((int, string) key)
         {
-            var key = (edge.SourceObject.GetInstanceID(), edge.EventPath);
             eventFireCounts.TryGetValue(key, out var n);
             eventFireCounts[key] = n + 1;
-            Recent(eventsLog, edge.FromId)
-                .Enqueue(edge.Label + "  · " + Time.realtimeSinceStartup.ToString("0.0") + "s");
-            UnityEventFired?.Invoke(edge, n + 1);
+            if (!relayEdges.TryGetValue(key, out var edges))
+                return;
+            foreach (var edge in edges)
+            {
+                Recent(eventsLog, edge.FromId)
+                    .Enqueue(edge.Label + "  · " + Time.realtimeSinceStartup.ToString("0.0") + "s");
+                UnityEventFired?.Invoke(edge, n + 1);
+            }
         }
 
         /// <summary>Recent UnityEvent fire lines for a source node.</summary>

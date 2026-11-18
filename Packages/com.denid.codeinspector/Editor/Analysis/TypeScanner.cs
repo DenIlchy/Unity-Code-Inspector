@@ -89,6 +89,7 @@ namespace Denid.CodeInspector.Editor
             if (options.IncludeEditorAssemblies)
                 groups.Add(AssembliesType.Editor);
 
+            var seen = new HashSet<string>();
             foreach (var group in groups)
             {
                 UnityEditor.Compilation.Assembly[] compiled;
@@ -102,6 +103,8 @@ namespace Denid.CodeInspector.Editor
                 }
                 foreach (var ca in compiled)
                 {
+                    if (!seen.Add(ca.name))
+                        continue;
                     if (!loaded.TryGetValue(ca.name, out var asm))
                         continue;
                     if (ScanOptions.IsOwnAssembly(asm))
@@ -181,8 +184,12 @@ namespace Denid.CodeInspector.Editor
                 try
                 {
                     var node = graph.GetOrAddNode(t);
-                    FillMembers(t, node);
-                    FillBadges(t, node);
+                    var fields = t.GetFields(Declared);
+                    var properties = t.GetProperties(Declared);
+                    var events = t.GetEvents(Declared);
+                    var methods = t.GetMethods(Declared);
+                    FillMembers(node, fields, properties, events, methods);
+                    FillBadges(node, fields, events, methods);
                 }
                 catch (Exception e)
                 {
@@ -254,14 +261,10 @@ namespace Denid.CodeInspector.Editor
             return monoScriptByType;
         }
 
-        internal static void ClearMonoScriptCache()
+        static void FillMembers(GraphNode node, FieldInfo[] fields,
+            PropertyInfo[] properties, EventInfo[] events, MethodInfo[] methods)
         {
-            monoScriptByType = null;
-        }
-
-        static void FillMembers(Type type, GraphNode node)
-        {
-            foreach (var f in type.GetFields(Declared))
+            foreach (var f in fields)
             {
                 node.Members.Add(new GraphMember
                 {
@@ -270,7 +273,7 @@ namespace Denid.CodeInspector.Editor
                     TypeName = CodeGraph.FriendlyName(f.FieldType),
                 });
             }
-            foreach (var p in type.GetProperties(Declared))
+            foreach (var p in properties)
             {
                 node.Members.Add(new GraphMember
                 {
@@ -279,7 +282,7 @@ namespace Denid.CodeInspector.Editor
                     TypeName = CodeGraph.FriendlyName(p.PropertyType),
                 });
             }
-            foreach (var e in type.GetEvents(Declared))
+            foreach (var e in events)
             {
                 node.Members.Add(new GraphMember
                 {
@@ -288,7 +291,7 @@ namespace Denid.CodeInspector.Editor
                     TypeName = CodeGraph.FriendlyName(e.EventHandlerType),
                 });
             }
-            foreach (var m in type.GetMethods(Declared))
+            foreach (var m in methods)
             {
                 if (m.IsSpecialName)
                     continue;
@@ -301,9 +304,10 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        static void FillBadges(Type type, GraphNode node)
+        static void FillBadges(GraphNode node, FieldInfo[] fields,
+            EventInfo[] events, MethodInfo[] methods)
         {
-            foreach (var m in type.GetMethods(Declared))
+            foreach (var m in methods)
             {
                 if (UpdateMessages.Contains(m.Name))
                 {
@@ -325,11 +329,11 @@ namespace Denid.CodeInspector.Editor
                 }
             }
 
-            if (type.GetEvents(Declared).Length > 0)
+            if (events.Length > 0)
                 node.Badges |= NodeBadges.HasEvents;
             else
             {
-                foreach (var f in type.GetFields(Declared))
+                foreach (var f in fields)
                 {
                     if (typeof(UnityEventBase).IsAssignableFrom(f.FieldType))
                     {
@@ -353,6 +357,20 @@ namespace Denid.CodeInspector.Editor
 
             foreach (var iface in type.GetInterfaces())
             {
+                if (baseType != null && iface.IsAssignableFrom(baseType) &&
+                    (set.Contains(baseType) || options.IncludeUnityTypes))
+                    continue;
+                var covered = false;
+                foreach (var j in type.GetInterfaces())
+                {
+                    if (j != iface && iface.IsAssignableFrom(j) && set.Contains(j))
+                    {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (covered)
+                    continue;
                 if (set.Contains(iface) || options.IsUserType(iface))
                 {
                     var node = graph.GetOrAddNode(iface);

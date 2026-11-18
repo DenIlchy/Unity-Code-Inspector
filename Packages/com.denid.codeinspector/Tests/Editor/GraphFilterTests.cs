@@ -72,6 +72,16 @@ namespace Denid.CodeInspector.Editor.Tests
         }
 
         [Test]
+        public void SearchWithNoMatchHidesEverything()
+        {
+            var s = GraphFilterSettings.CreateDefault();
+            s.Search = "NoSuchType";
+            var r = GraphFilter.Apply(ChainGraph(), s);
+            Assert.AreEqual(0, r.NodeIds.Count);
+            Assert.AreEqual(0, r.Edges.Count);
+        }
+
+        [Test]
         public void FocusDepthLimitsNodes()
         {
             var s = GraphFilterSettings.CreateDefault();
@@ -101,6 +111,37 @@ namespace Denid.CodeInspector.Editor.Tests
             s.HideIsolated = true;
             var r = GraphFilter.Apply(g, s);
             Assert.IsFalse(r.NodeIds.Contains(Id(typeof(FxScorer))));
+        }
+    }
+
+    public class CodeGraphTests
+    {
+        [Test]
+        public void GetOrAddEdgeReturnsSameInstanceForSameIdentity()
+        {
+            var g = new CodeGraph();
+            var a = g.GetOrAddEdge("a", "b", EdgeKind.MethodCall, "l");
+            var b = g.GetOrAddEdge("a", "b", EdgeKind.MethodCall, "l");
+            Assert.AreSame(a, b);
+            Assert.AreEqual(1, g.Edges.Count);
+            var c = g.GetOrAddEdge("a", "b", EdgeKind.MethodCall, "other");
+            Assert.AreNotSame(a, c);
+            Assert.AreEqual(2, g.Edges.Count);
+        }
+
+        [Test]
+        public void HasEdgeBetweenHonoursWeakerThan()
+        {
+            var g = new CodeGraph();
+            g.AddEdge("a", "b", EdgeKind.TypeUsage, "u");
+            Assert.IsFalse(g.HasEdgeBetween("a", "b", EdgeKind.TypeUsage),
+                "TypeUsage-only pair must not count");
+            g.AddEdge("a", "b", EdgeKind.MethodCall, "m");
+            Assert.IsTrue(g.HasEdgeBetween("a", "b", EdgeKind.TypeUsage));
+            Assert.IsTrue(g.HasEdgeBetween("a", "b", EdgeKind.MethodCall),
+                "another kind still links the pair");
+            Assert.IsFalse(g.HasEdgeBetween("b", "a", EdgeKind.TypeUsage));
+            Assert.IsFalse(g.HasEdgeBetween("a", "c", EdgeKind.TypeUsage));
         }
     }
 }

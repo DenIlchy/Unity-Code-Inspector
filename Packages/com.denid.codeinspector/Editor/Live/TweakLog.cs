@@ -25,6 +25,7 @@ namespace Denid.CodeInspector.Editor
         public string GlobalObjectId;
         public string ScenePath;
         public string HierarchyPath;
+        public string SiblingPath;
         /// <summary>AssemblyQualifiedName of the component (or UnityEngine.GameObject).</summary>
         public string TargetTypeName;
         public int ComponentIndex;
@@ -69,7 +70,27 @@ namespace Denid.CodeInspector.Editor
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
+        static Dictionary<(int InstanceId, string Path), TweakRecord> index;
+        static int indexedCount;
+
         public static List<TweakRecord> Records => TweakLogStore.instance.Records;
+
+        public static void Clear()
+        {
+            TweakLogStore.instance.Records.Clear();
+            index?.Clear();
+            indexedCount = 0;
+        }
+
+        static void EnsureIndex()
+        {
+            if (index != null && Records.Count == indexedCount)
+                return;
+            index = new Dictionary<(int, string), TweakRecord>();
+            foreach (var r in Records)
+                index[(r.InstanceId, r.PropertyPath)] = r;
+            indexedCount = Records.Count;
+        }
 
         public static Preference Mode
         {
@@ -101,15 +122,13 @@ namespace Denid.CodeInspector.Editor
                 IgnoredPaths.Contains(propertyPath))
                 return null;
             var key = (target.GetInstanceID(), propertyPath);
-            foreach (var r in Records)
+            EnsureIndex();
+            if (index.TryGetValue(key, out var existing))
             {
-                if (r.InstanceId == key.Item1 && r.PropertyPath == key.Item2)
-                {
-                    r.LastValue = newValue;
-                    r.LastObjectRefId = ObjectRefId(newRef);
-                    r.Timestamp = Time.realtimeSinceStartup;
-                    return r;
-                }
+                existing.LastValue = newValue;
+                existing.LastObjectRefId = ObjectRefId(newRef);
+                existing.Timestamp = Time.realtimeSinceStartup;
+                return existing;
             }
             var rec = new TweakRecord
             {
@@ -126,6 +145,8 @@ namespace Denid.CodeInspector.Editor
             };
             FillLocator(rec, target);
             Records.Add(rec);
+            index[key] = rec;
+            indexedCount = Records.Count;
             return rec;
         }
 
@@ -138,6 +159,7 @@ namespace Denid.CodeInspector.Editor
             {
                 rec.ScenePath = go.scene.path;
                 rec.HierarchyPath = HierarchyPath(go.transform);
+                rec.SiblingPath = SiblingPath(go.transform);
                 if (comp != null)
                 {
                     var index = 0;
@@ -159,12 +181,26 @@ namespace Denid.CodeInspector.Editor
             }
         }
 
-        static string HierarchyPath(Transform t)
+        internal static string HierarchyPath(Transform t)
         {
             var path = t.name;
             for (var p = t.parent; p != null; p = p.parent)
                 path = p.name + "/" + path;
             return path;
+        }
+
+        static string SiblingPath(Transform t)
+        {
+            var parts = new List<int>();
+            var cur = t;
+            while (cur.parent != null)
+            {
+                parts.Insert(0, cur.GetSiblingIndex());
+                cur = cur.parent;
+            }
+            var roots = cur.gameObject.scene.GetRootGameObjects();
+            parts.Insert(0, Array.IndexOf(roots, cur.gameObject));
+            return string.Join("/", parts);
         }
 
         static string GlobalIdOf(Object o)
@@ -184,9 +220,22 @@ namespace Denid.CodeInspector.Editor
         static void OnPlayModeChanged(PlayModeStateChange change)
         {
             if (change == PlayModeStateChange.ExitingPlayMode)
+            {
                 CaptureFinalValues();
+            }
             else if (change == PlayModeStateChange.EnteredEditMode)
+            {
                 EditorApplication.delayCall += PresentOrApply;
+            }
+            else if (change == PlayModeStateChange.ExitingEditMode)
+            {
+                if (Records.Count > 0)
+                {
+                    if (EditorWindow.HasOpenInstances<KeepChangesWindow>())
+                        EditorWindow.GetWindow<KeepChangesWindow>().Close();
+                    Clear();
+                }
+            }
         }
 
         /// <summary>Read final live values before objects are torn down.</summary>
@@ -223,12 +272,12 @@ namespace Denid.CodeInspector.Editor
             switch (Mode)
             {
                 case Preference.AlwaysDiscard:
-                    Records.Clear();
+                    Clear();
                     break;
                 case Preference.AlwaysKeep:
                     var applied = KeepChanges.ApplyAllKeepable();
                     Debug.Log($"CodeInspector: kept {applied} Play Mode change(s).");
-                    Records.Clear();
+                    Clear();
                     break;
                 default:
                     if (Application.isBatchMode ||

@@ -177,6 +177,62 @@ namespace Denid.CodeInspector.Editor.Tests
         public string s = "hello";
         public FxEnum e = FxEnum.B;
         public Vector3 v = new Vector3(1f, 2f, 3f);
+        public Vector4 v4 = new Vector4(1f, 2f, 3f, 4f);
         public FxConfig reference;
+    }
+
+    public class FxEnumerable : MonoBehaviour, IEnumerable
+    {
+        public IEnumerator GetEnumerator() => null;
+    }
+
+    public interface IFxBase
+    {
+    }
+
+    public class FxBaseImpl : MonoBehaviour, IFxBase
+    {
+    }
+
+    public class FxDerivedImpl : FxBaseImpl
+    {
+    }
+
+    public class FxSomeComponent : MonoBehaviour
+    {
+    }
+
+    public class FxMessageTarget : MonoBehaviour
+    {
+        public void FxReceiveTarget()
+        {
+        }
+    }
+
+    public class FxSendMessageIndirect : MonoBehaviour
+    {
+        string messageName = "FxReceiveTarget";
+
+        void Start()
+        {
+            Debug.Log("FxReceiveTarget");
+            SendMessage(messageName);
+        }
+    }
+
+    public class FxSendMessageLiteral : MonoBehaviour
+    {
+        void Start()
+        {
+            SendMessage("FxReceiveTarget");
+        }
+    }
+
+    public class FxNonGenericGetComponent : MonoBehaviour
+    {
+        void Start()
+        {
+            GetComponent(typeof(FxSomeComponent));
+        }
     }
 }

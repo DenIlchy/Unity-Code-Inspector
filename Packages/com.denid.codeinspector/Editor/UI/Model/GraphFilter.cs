@@ -103,11 +103,8 @@ namespace Denid.CodeInspector.Editor
                                 next.Add(other);
                     }
                 }
-                if (next.Count > 0)
-                {
-                    kept = next;
-                    FilterEdges();
-                }
+                kept = next;
+                FilterEdges();
             }
 
             if (!string.IsNullOrEmpty(settings.FocusNodeId) && kept.Contains(settings.FocusNodeId))

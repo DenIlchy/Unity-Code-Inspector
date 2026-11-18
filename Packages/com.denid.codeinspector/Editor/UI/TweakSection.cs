@@ -77,7 +77,10 @@ namespace Denid.CodeInspector.Editor
             this.typeGraph = typeGraph;
             this.sceneGraph = sceneGraph;
             if (IsStable(node))
+            {
+                boundNode = node;
                 return;
+            }
             boundNode = node;
             Rebuild();
         }
@@ -93,6 +96,8 @@ namespace Denid.CodeInspector.Editor
         bool IsStable(GraphNode node)
         {
             if (node == null || boundNode == null)
+                return false;
+            if (node.Id != boundNode.Id)
                 return false;
             if (node.Kind != boundNode.Kind || node.Target != boundTarget)
                 return false;

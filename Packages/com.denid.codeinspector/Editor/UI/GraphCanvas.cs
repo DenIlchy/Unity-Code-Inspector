@@ -37,6 +37,7 @@ namespace Denid.CodeInspector.Editor
         Vector2 panStart;
         Vector2 panStartMouse;
         string selectedId;
+        bool geometryDirty;
 
         public event Action<string> NodeSelected;
         public event Action<Type> NodeOpenRequested;
@@ -45,6 +46,9 @@ namespace Denid.CodeInspector.Editor
 
         public string SelectedNodeId => selectedId;
         public int VisibleNodeCount => nodeViews.Count;
+
+        internal bool TryGetNodeView(string nodeId, out NodeView view) =>
+            nodeViews.TryGetValue(nodeId, out view);
 
         public string ViewName
         {
@@ -111,6 +115,7 @@ namespace Denid.CodeInspector.Editor
         public void Bind(CodeGraph graph, GraphFilterResult filtered)
         {
             var previousPositions = new Dictionary<string, Vector2>(positions);
+            var previousSizes = new Dictionary<string, Vector2>(sizes);
             this.graph = graph;
             this.filtered = filtered;
             var keepSelection = selectedId != null && filtered != null && filtered.NodeIds.Contains(selectedId);
@@ -119,9 +124,6 @@ namespace Denid.CodeInspector.Editor
             panning = false;
             edgeTooltip.style.display = DisplayStyle.None;
 
-            foreach (var kv in nodeViews)
-                kv.Value.RemoveFromHierarchy();
-            nodeViews.Clear();
             transientEdges.Clear();
             foreach (var kv in flashLabels)
                 kv.Value.RemoveFromHierarchy();
@@ -133,21 +135,60 @@ namespace Denid.CodeInspector.Editor
 
             if (graph == null || filtered == null)
             {
+                foreach (var kv in nodeViews)
+                    kv.Value.RemoveFromHierarchy();
+                nodeViews.Clear();
                 edgeLayer.UpdateGeometry(nodeRects, new List<GraphEdge>(), edgeColorOf);
                 return;
             }
 
-            foreach (var id in filtered.NodeIds)
-                sizes[id] = new Vector2(NodeView.EstimatedWidth, NodeView.EstimatedHeight);
+            // Keep views whose node object is unchanged (same graph, new filter);
+            // drop views that are filtered out or bound to a stale node.
+            var stale = new List<string>();
+            foreach (var kv in nodeViews)
+            {
+                if (!filtered.NodeIds.Contains(kv.Key) ||
+                    !graph.Nodes.TryGetValue(kv.Key, out var n) ||
+                    !ReferenceEquals(kv.Value.Node, n))
+                    stale.Add(kv.Key);
+            }
+            foreach (var id in stale)
+            {
+                nodeViews[id].RemoveFromHierarchy();
+                nodeViews.Remove(id);
+            }
 
-            var edges = new List<(string, string)>(filtered.Edges.Count);
-            foreach (var e in filtered.Edges)
-                edges.Add((e.FromId, e.ToId));
-
-            var auto = GraphLayout.Layout(filtered.NodeIds, edges, sizes);
             foreach (var id in filtered.NodeIds)
             {
-                var pos = auto.TryGetValue(id, out var p) ? p : Vector2.zero;
+                // Kept views won't fire GeometryChangedEvent again; restore
+                // their measured size so edge anchors stay correct.
+                sizes[id] = nodeViews.ContainsKey(id) && previousSizes.TryGetValue(id, out var ps)
+                    ? ps
+                    : new Vector2(NodeView.EstimatedWidth, NodeView.EstimatedHeight);
+            }
+
+            var needsLayout = false;
+            foreach (var id in filtered.NodeIds)
+            {
+                if (!previousPositions.ContainsKey(id) &&
+                    !(layoutStore != null && layoutStore.TryGet(viewName, StoreKey(id), out _)))
+                {
+                    needsLayout = true;
+                    break;
+                }
+            }
+
+            Dictionary<string, Vector2> auto = null;
+            if (needsLayout)
+            {
+                var edges = new List<(string, string)>(filtered.Edges.Count);
+                foreach (var e in filtered.Edges)
+                    edges.Add((e.FromId, e.ToId));
+                auto = GraphLayout.Layout(filtered.NodeIds, edges, sizes);
+            }
+            foreach (var id in filtered.NodeIds)
+            {
+                var pos = auto != null && auto.TryGetValue(id, out var p) ? p : Vector2.zero;
                 var key = StoreKey(id);
                 if (previousPositions.TryGetValue(id, out var prev))
                     pos = prev;
@@ -158,6 +199,11 @@ namespace Denid.CodeInspector.Editor
 
             foreach (var id in filtered.NodeIds)
             {
+                if (nodeViews.TryGetValue(id, out var kept))
+                {
+                    kept.ContentPosition = positions[id];
+                    continue;
+                }
                 var view = CreateNodeView(id, graph.Nodes[id]);
                 view.ContentPosition = positions[id];
                 view.Dragged += OnNodeDragged;
@@ -172,6 +218,8 @@ namespace Denid.CodeInspector.Editor
             RebuildNodeRects();
             RefreshEdgeGeometry();
             UpdateCulling();
+            edgeLayer.HighlightNodeId = selectedId;
+            ApplySelectionVisuals();
         }
 
         internal static NodeView CreateNodeView(string id, GraphNode node)
@@ -190,8 +238,18 @@ namespace Denid.CodeInspector.Editor
                 Mathf.Abs(old.x - size.x) < 1f && Mathf.Abs(old.y - size.y) < 1f)
                 return;
             sizes[view.NodeId] = size;
+            if (geometryDirty)
+                return;
+            geometryDirty = true;
+            schedule.Execute(FlushGeometry);
+        }
+
+        void FlushGeometry()
+        {
+            geometryDirty = false;
             RebuildNodeRects();
             RefreshEdgeGeometry();
+            UpdateCulling();
         }
 
         void RebuildNodeRects()
@@ -261,7 +319,7 @@ namespace Denid.CodeInspector.Editor
             // Left drag on empty space, Alt+left, or middle drag pans the canvas.
             if (e.button == 0)
                 ClearSelection();
-            if (e.button == 0 || e.button == 2 || (e.button == 0 && e.altKey))
+            if (e.button == 0 || e.button == 2)
             {
                 panning = true;
                 panStart = pan;
@@ -457,21 +515,17 @@ namespace Denid.CodeInspector.Editor
         void FlashTick()
         {
             if (edgeLayer.HasActiveFlashes)
-            {
                 edgeLayer.MarkDirtyRepaint();
-                UpdateFlashLabels();
-            }
         }
 
         void UpdateFlashLabels()
         {
-            if (filtered == null && transientEdges.Count == 0)
-                return;
-            void Sync(GraphEdge e)
+            foreach (var kv in edgeLayer.Flashes)
             {
-                var count = edgeLayer.FlashCountFor(e);
+                var e = kv.Key;
+                var count = kv.Value.Count;
                 if (count <= 0)
-                    return;
+                    continue;
                 if (!flashLabels.TryGetValue(e, out var l))
                 {
                     l = new Label();
@@ -484,15 +538,15 @@ namespace Denid.CodeInspector.Editor
                 l.text = "×" + count;
                 if (edgeLayer.TryGetMidpoint(e, out var mid))
                 {
+                    l.style.display = DisplayStyle.Flex;
                     l.style.left = mid.x + 6f;
                     l.style.top = mid.y - 8f;
                 }
+                else
+                {
+                    l.style.display = DisplayStyle.None;
+                }
             }
-            if (filtered != null)
-                foreach (var e in filtered.Edges)
-                    Sync(e);
-            foreach (var e in transientEdges)
-                Sync(e);
         }
 
         /// <summary>Pulse the node view for a bound value change.</summary>
@@ -516,13 +570,7 @@ namespace Denid.CodeInspector.Editor
             selectedId = nodeId;
             edgeLayer.HighlightNodeId = nodeId;
             edgeLayer.MarkDirtyRepaint();
-            foreach (var kv in nodeViews)
-            {
-                var sel = kv.Key == nodeId;
-                kv.Value.SetSelected(sel);
-                var dim = !string.IsNullOrEmpty(nodeId) && !sel && !IsNeighbor(nodeId, kv.Key);
-                kv.Value.SetDimmed(dim);
-            }
+            ApplySelectionVisuals();
             NodeSelected?.Invoke(nodeId);
         }
 
@@ -531,24 +579,36 @@ namespace Denid.CodeInspector.Editor
             selectedId = null;
             edgeLayer.HighlightNodeId = null;
             edgeLayer.MarkDirtyRepaint();
-            foreach (var kv in nodeViews)
-            {
-                kv.Value.SetSelected(false);
-                kv.Value.SetDimmed(false);
-            }
+            ApplySelectionVisuals();
             NodeSelected?.Invoke(null);
         }
 
-        bool IsNeighbor(string a, string b)
+        void ApplySelectionVisuals()
         {
-            if (filtered == null)
-                return false;
+            var neighbors = NeighborsOf(selectedId);
+            foreach (var kv in nodeViews)
+            {
+                var sel = kv.Key == selectedId;
+                kv.Value.SetSelected(sel);
+                var dim = !string.IsNullOrEmpty(selectedId) && !sel &&
+                          (neighbors == null || !neighbors.Contains(kv.Key));
+                kv.Value.SetDimmed(dim);
+            }
+        }
+
+        HashSet<string> NeighborsOf(string nodeId)
+        {
+            if (string.IsNullOrEmpty(nodeId) || filtered == null)
+                return null;
+            var set = new HashSet<string>();
             foreach (var e in filtered.Edges)
             {
-                if ((e.FromId == a && e.ToId == b) || (e.FromId == b && e.ToId == a))
-                    return true;
+                if (e.FromId == nodeId)
+                    set.Add(e.ToId);
+                else if (e.ToId == nodeId)
+                    set.Add(e.FromId);
             }
-            return false;
+            return set;
         }
 
         // ---- Culling / framing -------------------------------------------------
@@ -616,6 +676,7 @@ namespace Denid.CodeInspector.Editor
         public void ResetLayout()
         {
             layoutStore?.ClearView(viewName);
+            positions.Clear();
             if (graph != null && filtered != null)
                 Bind(graph, filtered);
         }

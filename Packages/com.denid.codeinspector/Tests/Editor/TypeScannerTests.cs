@@ -230,4 +230,113 @@ namespace Denid.CodeInspector.Editor.Tests
             Assert.IsNotNull(g);
         }
     }
+
+    public class TypeScannerRegressionTests
+    {
+        static string Id(Type t) => CodeGraph.NodeIdFor(t);
+
+        static bool HasEdge(CodeGraph g, Type from, Type to, EdgeKind kind)
+        {
+            var fromId = Id(from);
+            var toId = Id(to);
+            foreach (var e in g.Edges)
+            {
+                if (e.FromId == fromId && e.ToId == toId && e.Kind == kind)
+                    return true;
+            }
+            return false;
+        }
+
+        static CodeGraph BuildGraph(params Type[] types)
+        {
+            return TypeScanner.Build(types, new ScanOptions { AssemblyFilter = _ => true });
+        }
+
+        [Test]
+        public void IsUserTypeWithoutFilterIsFalse()
+        {
+            Assert.IsFalse(new ScanOptions().IsUserType(typeof(System.Collections.IEnumerable)));
+        }
+
+        [Test]
+        public void FrameworkInterfaceGetsNoNode()
+        {
+            var g = TypeScanner.Build(new[] { typeof(FxEnumerable) }, new ScanOptions());
+            Assert.IsFalse(g.Nodes.ContainsKey(Id(typeof(System.Collections.IEnumerable))),
+                "IEnumerable node must not be created");
+        }
+
+        [Test]
+        public void DerivedDoesNotRepeatBaseInterfaceEdge()
+        {
+            var g = BuildGraph(typeof(IFxBase), typeof(FxBaseImpl), typeof(FxDerivedImpl));
+            Assert.IsTrue(HasEdge(g, typeof(FxBaseImpl), typeof(IFxBase), EdgeKind.Inheritance),
+                "FxBaseImpl -> IFxBase interface edge missing");
+            Assert.IsFalse(HasEdge(g, typeof(FxDerivedImpl), typeof(IFxBase), EdgeKind.Inheritance),
+                "FxDerivedImpl -> IFxBase edge should be covered by the base type");
+            Assert.IsTrue(HasEdge(g, typeof(FxDerivedImpl), typeof(FxBaseImpl), EdgeKind.Inheritance),
+                "FxDerivedImpl -> FxBaseImpl edge missing");
+        }
+
+        [Test]
+        public void SendMessageWithVariableAfterLdstrHasNoEdge()
+        {
+            var g = BuildGraph(typeof(FxSendMessageIndirect), typeof(FxMessageTarget));
+            Assert.IsFalse(HasEdge(g, typeof(FxSendMessageIndirect), typeof(FxMessageTarget),
+                EdgeKind.SendMessage),
+                "Debug.Log between ldstr and SendMessage must clear the tracked string");
+        }
+
+        [Test]
+        public void SendMessageWithLiteralHasEdge()
+        {
+            var g = BuildGraph(typeof(FxSendMessageLiteral), typeof(FxMessageTarget));
+            Assert.IsTrue(HasEdge(g, typeof(FxSendMessageLiteral), typeof(FxMessageTarget),
+                EdgeKind.SendMessage),
+                "SendMessage(\"FxReceiveTarget\") edge missing");
+        }
+
+        [Test]
+        public void NonGenericGetComponentHasEdge()
+        {
+            var g = BuildGraph(typeof(FxNonGenericGetComponent), typeof(FxSomeComponent));
+            Assert.IsTrue(HasEdge(g, typeof(FxNonGenericGetComponent), typeof(FxSomeComponent),
+                EdgeKind.GetComponent),
+                "GetComponent(typeof(FxSomeComponent)) edge missing");
+        }
+    }
+
+    public class ArchitectureGraphCacheTests
+    {
+        ScanOptions saved;
+
+        [SetUp]
+        public void SetUp() => saved = ArchitectureGraphCache.Options;
+
+        [TearDown]
+        public void TearDown()
+        {
+            ArchitectureGraphCache.Options = saved;
+            ArchitectureGraphCache.Invalidate();
+        }
+
+        [Test]
+        public void SameOptionsReuseGraph()
+        {
+            ArchitectureGraphCache.Options = new ScanOptions();
+            var g1 = ArchitectureGraphCache.Graph;
+            var g2 = ArchitectureGraphCache.Graph;
+            Assert.AreSame(g1, g2);
+        }
+
+        [Test]
+        public void ChangedOptionsRebuild()
+        {
+            ArchitectureGraphCache.Options = new ScanOptions();
+            var g1 = ArchitectureGraphCache.Graph;
+            ArchitectureGraphCache.Options = new ScanOptions { IncludePackageAssemblies = true };
+            var g2 = ArchitectureGraphCache.Graph;
+            Assert.AreNotSame(g1, g2);
+        }
+    }
 }

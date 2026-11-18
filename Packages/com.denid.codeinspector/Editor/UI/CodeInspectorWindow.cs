@@ -35,6 +35,7 @@ namespace Denid.CodeInspector.Editor
         GraphCanvas sceneCanvas;
         SidePanel sidePanel;
         VisualElement emptyState;
+        Label emptyLabel;
         VisualElement legend;
         Label statusLabel;
         ToolbarToggle archToggle;
@@ -52,6 +53,8 @@ namespace Denid.CodeInspector.Editor
         CodeGraph sceneGraph;
         IVisualElementScheduledItem pendingSceneRefresh;
         readonly RefreshThrottle sceneThrottle = new RefreshThrottle(300, 1000);
+        readonly SceneRefreshPolicy.PropertyChangeFilter propertyFilter =
+            new SceneRefreshPolicy.PropertyChangeFilter();
         bool suppressSelectionSync;
         bool rebuilding;
         readonly PlayModeMonitor liveMonitor = new PlayModeMonitor();
@@ -74,6 +77,7 @@ namespace Denid.CodeInspector.Editor
         {
             EnsureDefaults();
             layoutStore = new LayoutStore();
+            layoutStore.Prune(LayoutPruning.IsStale);
             AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
             EditorApplication.hierarchyChanged += OnSceneContentChanged;
             ObjectChangeEvents.changesPublished += OnObjectChanges;
@@ -102,6 +106,8 @@ namespace Denid.CodeInspector.Editor
             PrefabStage.prefabStageClosing -= OnPrefabStageChanged;
             Selection.selectionChanged -= OnUnitySelectionChanged;
             Undo.postprocessModifications -= OnPostprocessModifications;
+            liveMonitor.Clear();
+            pendingSceneRefresh?.Pause();
         }
 
         void EnsureDefaults()
@@ -152,9 +158,27 @@ namespace Denid.CodeInspector.Editor
             if (rebuilding)
                 return;
             var kinds = new List<ObjectChangeKind>(stream.length);
+            var refresh = false;
             for (var i = 0; i < stream.length; i++)
-                kinds.Add(stream.GetEventType(i));
-            if (SceneRefreshPolicy.ShouldRefresh(kinds))
+            {
+                var kind = stream.GetEventType(i);
+                if (kind == ObjectChangeKind.ChangeGameObjectOrComponentProperties)
+                {
+                    stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out var d);
+                    if (propertyFilter.ShouldRefresh(EditorIds.IdToObject(d.instanceId)))
+                        refresh = true;
+                    continue;
+                }
+                if (kind == ObjectChangeKind.ChangeAssetObjectProperties)
+                {
+                    stream.GetChangeAssetObjectPropertiesEvent(i, out var d);
+                    if (propertyFilter.ShouldRefresh(EditorIds.IdToObject(d.instanceId)))
+                        refresh = true;
+                    continue;
+                }
+                kinds.Add(kind);
+            }
+            if (refresh || SceneRefreshPolicy.ShouldRefresh(kinds))
                 ScheduleSceneRefresh();
         }
 
@@ -176,17 +200,39 @@ namespace Denid.CodeInspector.Editor
             return mods;
         }
 
-        void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, OpenSceneMode mode) => ScheduleSceneRefresh();
-        void OnSceneClosed(UnityEngine.SceneManagement.Scene scene) => ScheduleSceneRefresh();
-        void OnActiveSceneChanged(UnityEngine.SceneManagement.Scene a, UnityEngine.SceneManagement.Scene b) => ScheduleSceneRefresh();
-        void OnActiveSceneChangedRuntime(UnityEngine.SceneManagement.Scene a, UnityEngine.SceneManagement.Scene b) => ScheduleSceneRefresh();
+        void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, OpenSceneMode mode)
+        {
+            propertyFilter.Clear();
+            ScheduleSceneRefresh();
+        }
+
+        void OnSceneClosed(UnityEngine.SceneManagement.Scene scene)
+        {
+            propertyFilter.Clear();
+            ScheduleSceneRefresh();
+        }
+
+        void OnActiveSceneChanged(UnityEngine.SceneManagement.Scene a, UnityEngine.SceneManagement.Scene b)
+        {
+            propertyFilter.Clear();
+            ScheduleSceneRefresh();
+        }
+
+        void OnActiveSceneChangedRuntime(UnityEngine.SceneManagement.Scene a, UnityEngine.SceneManagement.Scene b)
+        {
+            propertyFilter.Clear();
+            ScheduleSceneRefresh();
+        }
+
         void OnPrefabStageChanged(PrefabStage stage) => ScheduleSceneRefresh();
         void OnPlayModeChanged(PlayModeStateChange change)
         {
             if (change == PlayModeStateChange.ExitingPlayMode ||
                 change == PlayModeStateChange.EnteredEditMode)
                 liveMonitor.Clear();
-            if (view == (int)View.Scene)
+            if (view == (int)View.Scene &&
+                (change == PlayModeStateChange.EnteredPlayMode ||
+                 change == PlayModeStateChange.EnteredEditMode))
                 RebuildScene();
         }
 
@@ -324,7 +370,7 @@ namespace Denid.CodeInspector.Editor
 
             emptyState = new VisualElement();
             emptyState.AddToClassList("ci-empty");
-            var emptyLabel = new Label(
+            emptyLabel = new Label(
                 "No user scripts found in Assets/.\nToggle 'Include package scripts' in the Types menu, or add scripts to your project.");
             emptyLabel.AddToClassList("ci-empty-label");
             emptyState.Add(emptyLabel);
@@ -475,7 +521,7 @@ namespace Denid.CodeInspector.Editor
             tweaksBadge = new ToolbarButton(() =>
             {
                 if (sceneCanvas != null)
-                    view = (int)View.Scene;
+                    SetView(View.Scene);
             }) { text = "0 tweaks" };
             tweaksBadge.style.display = DisplayStyle.None;
             toolbar.Add(tweaksBadge);
@@ -586,9 +632,14 @@ namespace Denid.CodeInspector.Editor
         void Refresh()
         {
             if (view == (int)View.Scene)
+            {
                 RebuildScene();
+            }
             else
+            {
+                ArchitectureGraphCache.Invalidate();
                 RebuildArchitecture();
+            }
         }
 
         void RebuildArchitecture()
@@ -600,7 +651,6 @@ namespace Denid.CodeInspector.Editor
                 IncludePackageAssemblies = includePackages,
                 IncludeEditorAssemblies = includeEditorScripts,
             };
-            ArchitectureGraphCache.Invalidate();
             typeGraph = ArchitectureGraphCache.Graph;
             archFiltered = GraphFilter.Apply(typeGraph, BuildFilterSettings(archCanvas));
             archCanvas.Bind(typeGraph, archFiltered);
@@ -699,6 +749,12 @@ namespace Denid.CodeInspector.Editor
             {
                 var showEmpty = f != null && f.NodeIds.Count == 0;
                 emptyState.style.display = showEmpty ? DisplayStyle.Flex : DisplayStyle.None;
+                if (showEmpty && emptyLabel != null)
+                {
+                    emptyLabel.text = f.TotalNodes > 0
+                        ? "No nodes match the current filters."
+                        : "No user scripts found in Assets/.\nToggle 'Include package scripts' in the Types menu, or add scripts to your project.";
+                }
             }
         }
 
@@ -718,9 +774,33 @@ namespace Denid.CodeInspector.Editor
             archCanvas?.PulseObject(target);
         }
 
+        void RefilterActive()
+        {
+            if (view == (int)View.Scene)
+            {
+                if (sceneGraph != null && sceneCanvas != null)
+                {
+                    sceneFiltered = GraphFilter.Apply(sceneGraph, BuildFilterSettings(sceneCanvas));
+                    sceneCanvas.Bind(sceneGraph, sceneFiltered);
+                }
+            }
+            else if (typeGraph != null && archCanvas != null)
+            {
+                archFiltered = GraphFilter.Apply(typeGraph, BuildFilterSettings(archCanvas));
+                archCanvas.Bind(typeGraph, archFiltered);
+            }
+        }
+
         void OnNodeSelected(string nodeId)
         {
             sidePanel?.ShowNode(nodeId);
+            if (focusOn)
+            {
+                // Re-bind keeps the selected NodeView; it does not re-raise
+                // NodeSelected, so no recursion.
+                RefilterActive();
+                SyncSidePanelAndStatus();
+            }
             if (view == (int)View.Scene && sceneSyncSelection && nodeId != null &&
                 sceneGraph != null && sceneGraph.Nodes.TryGetValue(nodeId, out var node) &&
                 node.Target != null)

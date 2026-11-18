@@ -59,6 +59,16 @@ namespace Denid.CodeInspector.Editor.Tests
             so.Update();
             Assert.LessOrEqual(ValueSnapshot.Capture(so, 3).Count, 3);
         }
+
+        [Test]
+        public void LeafTypesDontExpandChildren()
+        {
+            var so = new SerializedObject(fields);
+            so.Update();
+            var snap = ValueSnapshot.Capture(so);
+            Assert.AreEqual(1, snap.Count(f => f.Path == "v"));
+            Assert.IsFalse(snap.Any(f => f.Path.StartsWith("v.", StringComparison.Ordinal)));
+        }
     }
 
     public class PropertyValueCodecTests
@@ -147,6 +157,12 @@ namespace Denid.CodeInspector.Editor.Tests
             var p = so.FindProperty("v");
             Assert.IsFalse(PropertyValueCodec.IsWritable(p));
         }
+
+        [Test]
+        public void Vector4ReadsItsOwnComponents()
+        {
+            Assert.AreEqual("1,2,3,4", Read("v4"));
+        }
     }
 
     public class UnityEventRelayTests
@@ -218,6 +234,53 @@ namespace Denid.CodeInspector.Editor.Tests
             UnityEventRelay.Register(source, "onFire", OnFire);
             source.onFire.Invoke();
             Assert.AreEqual(1, fired, "one registration → one callback per invoke");
+        }
+    }
+
+    public class PlayModeMonitorRelayTests
+    {
+        GameObject go;
+        PlayModeMonitor monitor;
+
+        [TearDown]
+        public void TearDown()
+        {
+            monitor?.Clear();
+            if (go != null)
+                Object.DestroyImmediate(go);
+        }
+
+        [Test]
+        public void SharedRelayFiresOncePerEdge()
+        {
+            go = new GameObject("multi");
+            var source = go.AddComponent<FxEventSource>();
+            var graph = new CodeGraph();
+            var e1 = new GraphEdge
+            {
+                FromId = "x", ToId = "a", Kind = EdgeKind.UnityEventBinding,
+                Label = "onFire → a", SourceObject = source, EventPath = "onFire",
+            };
+            var e2 = new GraphEdge
+            {
+                FromId = "x", ToId = "b", Kind = EdgeKind.UnityEventBinding,
+                Label = "onFire → b", SourceObject = source, EventPath = "onFire",
+            };
+            graph.Edges.Add(e1);
+            graph.Edges.Add(e2);
+
+            monitor = new PlayModeMonitor();
+            var counts = new Dictionary<GraphEdge, int>();
+            monitor.UnityEventFired += (e, n) => counts[e] = n;
+            monitor.Attach(graph, null);
+
+            source.onFire.Invoke();
+            Assert.AreEqual(1, counts[e1]);
+            Assert.AreEqual(1, counts[e2]);
+
+            source.onFire.Invoke();
+            Assert.AreEqual(2, counts[e1]);
+            Assert.AreEqual(2, counts[e2]);
         }
     }
 
@@ -317,6 +380,17 @@ namespace Denid.CodeInspector.Editor.Tests
             Assert.IsNull(TweakLog.RecordModification(fields, "m_RootOrder", "0", null, "1", null));
             Assert.AreEqual(0, TweakLog.Records.Count);
         }
+
+        [Test]
+        public void ClearAllowsNewRecord()
+        {
+            var r1 = TweakLog.RecordModification(fields, "i", "1", null, "5", null);
+            TweakLog.Clear();
+            var r2 = TweakLog.RecordModification(fields, "i", "1", null, "9", null);
+            Assert.AreEqual(1, TweakLog.Records.Count);
+            Assert.AreNotSame(r1, r2);
+            Assert.AreEqual("9", r2.LastValue);
+        }
     }
 
     public class TweakResolverTests
@@ -396,6 +470,43 @@ namespace Denid.CodeInspector.Editor.Tests
             Undo.CollapseUndoOperations(group);
             Undo.PerformUndo();
             Assert.AreEqual(1, fields.i);
+        }
+
+        [Test]
+        public void LocatorHandlesSlashInObjectName()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var root = new GameObject("A/B");
+            var child = new GameObject("C");
+            child.transform.SetParent(root.transform);
+            var resolved = TweakResolver.ResolveByLocator(null, "A/B/C",
+                typeof(GameObject).AssemblyQualifiedName, 0);
+            Assert.AreSame(child, resolved);
+        }
+
+        [Test]
+        public void LocatorSkipsDuplicateSiblingWithoutComponent()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            new GameObject("Dup");
+            var second = new GameObject("Dup");
+            var comp = second.AddComponent<FxFields>();
+            var resolved = TweakResolver.ResolveByLocator(null, "Dup",
+                typeof(FxFields).AssemblyQualifiedName, 0);
+            Assert.AreSame(comp, resolved);
+        }
+
+        [Test]
+        public void LocatorUsesSiblingPath()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            new GameObject("Dup");
+            var second = new GameObject("Dup");
+            var comp = second.AddComponent<FxFields>();
+            var rootIndex = Array.IndexOf(second.scene.GetRootGameObjects(), second);
+            var resolved = TweakResolver.ResolveByLocator(null, "Dup",
+                typeof(FxFields).AssemblyQualifiedName, 0, rootIndex.ToString());
+            Assert.AreSame(comp, resolved);
         }
 
         [Test]

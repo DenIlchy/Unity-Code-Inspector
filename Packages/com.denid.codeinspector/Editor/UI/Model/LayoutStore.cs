@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Denid.CodeInspector.Editor
 {
@@ -93,6 +95,38 @@ namespace Denid.CodeInspector.Editor
             Save();
         }
 
+        /// <summary>Removes entries the predicate marks stale; saves on change.</summary>
+        public int Prune(Func<string, string, bool> isStale)
+        {
+            EnsureLoaded();
+            var removed = 0;
+            var emptyViews = new List<string>();
+            foreach (var view in views)
+            {
+                var staleKeys = new List<string>();
+                foreach (var key in view.Value.Keys)
+                {
+                    if (isStale(view.Key, key))
+                        staleKeys.Add(key);
+                }
+                foreach (var k in staleKeys)
+                {
+                    view.Value.Remove(k);
+                    removed++;
+                }
+                if (view.Value.Count == 0)
+                    emptyViews.Add(view.Key);
+            }
+            foreach (var v in emptyViews)
+                views.Remove(v);
+            if (removed > 0)
+            {
+                dirty = true;
+                Save();
+            }
+            return removed;
+        }
+
         public void ClearView(string view)
         {
             EnsureLoaded();
@@ -128,6 +162,62 @@ namespace Denid.CodeInspector.Editor
             {
                 Debug.LogWarning("CodeInspector: failed to save layout: " + e.Message);
             }
+        }
+    }
+
+    /// <summary>Decides whether a persisted layout entry can never resolve again.</summary>
+    public static class LayoutPruning
+    {
+        public static bool IsStale(string view, string key)
+        {
+            if (view != null && view.StartsWith("Scene:", StringComparison.Ordinal))
+            {
+                var p = view.Substring(6);
+                if ((p.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+                     p.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)) &&
+                    string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(p)))
+                    return true;
+            }
+            if (key.StartsWith("go:", StringComparison.Ordinal) ||
+                key.StartsWith("asset:", StringComparison.Ordinal))
+                return true;
+            if (key.StartsWith("type:", StringComparison.Ordinal))
+                return Type.GetType(key.Substring(5), false) == null;
+            if (GlobalObjectId.TryParse(key, out var id))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(id.assetGUID);
+                if (string.IsNullOrEmpty(path))
+                    return true;
+                if (id.identifierType == 2 && SceneManager.GetSceneByPath(path).isLoaded)
+                {
+                    try
+                    {
+                        if (GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) == null)
+                            return true;
+                    }
+                    catch (Exception)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            var colon = key.IndexOf(':');
+            if (colon > 0 && LooksLikeGuid(key.Substring(0, colon)))
+                return string.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(key.Substring(0, colon)));
+            return false;
+        }
+
+        static bool LooksLikeGuid(string s)
+        {
+            if (s.Length != 32)
+                return false;
+            foreach (var c in s)
+            {
+                if (!Uri.IsHexDigit(c))
+                    return false;
+            }
+            return true;
         }
     }
 }

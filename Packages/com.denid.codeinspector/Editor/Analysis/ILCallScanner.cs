@@ -174,6 +174,7 @@ namespace Denid.CodeInspector.Editor
             var module = method.Module;
 
             string lastString = null;
+            Type lastType = null;
             var callerId = CodeGraph.NodeIdFor(callerType);
             var callerName = CallerMethodName(method, callerType);
 
@@ -213,7 +214,24 @@ namespace Denid.CodeInspector.Editor
                         // Unresolvable token (e.g. vararg signature) - skip.
                     }
                     if (callee != null)
-                        HandleCall(callerType, callerName, callee, lastString, callerId, ctx);
+                    {
+                        if (HandleCall(callerType, callerName, callee, lastString, lastType,
+                                callerId, ctx))
+                            lastType = null;
+                        if (SendMessageMethodNames.Contains(callee.Name))
+                            lastString = null;
+                        else
+                        {
+                            foreach (var p in callee.GetParameters())
+                            {
+                                if (p.ParameterType.IsAssignableFrom(typeof(string)))
+                                {
+                                    lastString = null;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 else if (op.OperandType == OperandType.InlineField)
                 {
@@ -242,15 +260,45 @@ namespace Denid.CodeInspector.Editor
                         lastString = null;
                     }
                 }
+                else if (op == OpCodes.Ldtoken && op.OperandType == OperandType.InlineTok)
+                {
+                    var token = BitConverter.ToInt32(il, operandPos);
+                    try
+                    {
+                        lastType = module.ResolveMember(token, typeArgs, methodArgs) as Type;
+                    }
+                    catch (Exception)
+                    {
+                        lastType = null;
+                    }
+                }
                 else if (flow == FlowControl.Branch || flow == FlowControl.Cond_Branch)
                 {
                     lastString = null;
+                    lastType = null;
+                }
+                if (IsStoreOrPop(op))
+                {
+                    lastString = null;
+                    lastType = null;
                 }
             }
         }
 
-        static void HandleCall(Type callerType, string callerName, MethodBase callee,
-            string lastString, string callerId, ScanContext ctx)
+        static bool IsStoreOrPop(OpCode op)
+        {
+            if (op == OpCodes.Pop)
+                return true;
+            var n = op.Name;
+            return n != null &&
+                   (n.StartsWith("stloc", StringComparison.Ordinal) ||
+                    n == "stfld" || n == "stsfld" ||
+                    n.StartsWith("starg", StringComparison.Ordinal) ||
+                    n.StartsWith("stelem", StringComparison.Ordinal));
+        }
+
+        static bool HandleCall(Type callerType, string callerName, MethodBase callee,
+            string lastString, Type lastType, string callerId, ScanContext ctx)
         {
             var declType = OutermostUserType(callee.DeclaringType);
 
@@ -266,7 +314,32 @@ namespace Denid.CodeInspector.Editor
                             EdgeKind.GetComponent, callee.Name + "<" + arg.Name + ">");
                     }
                 }
-                return;
+                return false;
+            }
+
+            // Non-generic GetComponent(typeof(T)) family: use the last ldtoken type.
+            if (!callee.IsGenericMethod && GetComponentMethodNames.Contains(callee.Name))
+            {
+                var hasTypeParam = false;
+                foreach (var p in callee.GetParameters())
+                {
+                    if (p.ParameterType == typeof(Type))
+                    {
+                        hasTypeParam = true;
+                        break;
+                    }
+                }
+                if (hasTypeParam && lastType != null)
+                {
+                    var arg = OutermostUserType(lastType);
+                    if (arg != callerType && ctx.Scanned.Contains(arg))
+                    {
+                        ctx.Graph.AddEdge(callerId, CodeGraph.NodeIdFor(arg),
+                            EdgeKind.GetComponent,
+                            callee.Name + "(typeof(" + arg.Name + "))");
+                    }
+                    return true;
+                }
             }
 
             // Event subscription: call to special-name add_X on another scanned type.
@@ -275,7 +348,7 @@ namespace Denid.CodeInspector.Editor
             {
                 ctx.Graph.AddEdge(callerId, CodeGraph.NodeIdFor(declType),
                     EdgeKind.CSharpEventSubscription, callee.Name.Substring(4));
-                return;
+                return false;
             }
 
             // String-based SendMessage family: use the most recent ldstr.
@@ -291,7 +364,7 @@ namespace Denid.CodeInspector.Editor
                             EdgeKind.SendMessage, lastString, approximate: true);
                     }
                 }
-                return;
+                return false;
             }
 
             // Plain method call to another scanned type.
@@ -301,6 +374,7 @@ namespace Denid.CodeInspector.Editor
                     EdgeKind.MethodCall,
                     callerType.Name + "." + callerName + " -> " + declType.Name + "." + callee.Name);
             }
+            return false;
         }
 
         static void HandleFieldAccess(Type callerType, string callerName, FieldInfo field,

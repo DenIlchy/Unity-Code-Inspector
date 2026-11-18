@@ -70,7 +70,6 @@ namespace Denid.CodeInspector.Editor
                 var found = text.IndexOf(needle, idx, StringComparison.Ordinal);
                 if (found < 0)
                     return -1;
-                var nl = text.IndexOf('\n', found);
                 line += CountNewlines(text, idx, found);
                 idx = found + needle.Length;
                 var next = idx < text.Length ? text[idx] : ' ';
@@ -108,12 +107,6 @@ namespace Denid.CodeInspector.Editor
             var script = Find(type);
             if (script != null)
                 AssetDatabase.OpenAsset(script, DeclarationLine(type));
-        }
-
-        public static void Clear()
-        {
-            cache.Clear();
-            declarationLines.Clear();
         }
     }
 }

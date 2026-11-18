@@ -26,6 +26,10 @@ namespace Denid.CodeInspector.Editor
         readonly Label emptyLabel;
         readonly TweakSection tweak;
         readonly VisualElement liveBox;
+        readonly VisualElement liveLinesBox;
+        readonly VisualElement tweaksBox;
+        string liveNodeId;
+        string tweaksSignature;
 
         CodeGraph graph;
         GraphFilterResult filtered;
@@ -75,6 +79,10 @@ namespace Denid.CodeInspector.Editor
             contentBox.Add(tweak);
 
             liveBox = new VisualElement();
+            liveLinesBox = new VisualElement();
+            liveBox.Add(liveLinesBox);
+            tweaksBox = new VisualElement();
+            liveBox.Add(tweaksBox);
             contentBox.Add(liveBox);
 
             infoBox = new VisualElement();
@@ -106,6 +114,7 @@ namespace Denid.CodeInspector.Editor
         public void ShowNode(string nodeId)
         {
             currentNodeId = nodeId;
+            liveNodeId = null;
             usesList.Clear();
             usedByList.Clear();
             badgesBox.Clear();
@@ -154,52 +163,110 @@ namespace Denid.CodeInspector.Editor
         /// <summary>Refills the live sections for the current node (called per tick).</summary>
         public void RefreshLive()
         {
-            liveBox.Clear();
-            if (graph == null || currentNodeId == null ||
-                !graph.Nodes.TryGetValue(currentNodeId, out var node))
-                return;
-            AddLiveSection("Live values", LiveChangesProvider?.Invoke(node));
-            AddLiveSection("Events fired", LiveEventsProvider?.Invoke(node));
-            AddLiveSection("Contacts", LiveContactsProvider?.Invoke(node));
+            var nodeChanged = liveNodeId != currentNodeId;
+            liveNodeId = currentNodeId;
 
-            var tweaks = TweaksProvider?.Invoke(node);
-            if (tweaks != null && tweaks.Count > 0)
+            GraphNode node = null;
+            var entries = new List<(bool Header, string Text)>();
+            if (graph != null && currentNodeId != null &&
+                graph.Nodes.TryGetValue(currentNodeId, out node))
             {
-                var h = new Label("Play Mode changes (" + tweaks.Count + ")");
-                h.AddToClassList("ci-sidepanel-section");
-                liveBox.Add(h);
-                foreach (var rec in tweaks)
-                {
-                    var row = new VisualElement();
-                    row.style.flexDirection = FlexDirection.Row;
-                    var label = new Label(
-                        $"{rec.PropertyDisplay}  {rec.OriginalValue} → {rec.LastValue}");
-                    label.AddToClassList("ci-edge-entry");
-                    label.style.flexGrow = 1f;
-                    row.Add(label);
-                    var revert = new Button(() => TweakRevertRequested?.Invoke(rec, node))
-                    {
-                        text = "Revert",
-                    };
-                    revert.AddToClassList("ci-tweak-revert");
-                    row.Add(revert);
-                    liveBox.Add(row);
-                }
+                CollectLiveSection(entries, "Live values", LiveChangesProvider?.Invoke(node));
+                CollectLiveSection(entries, "Events fired", LiveEventsProvider?.Invoke(node));
+                CollectLiveSection(entries, "Contacts", LiveContactsProvider?.Invoke(node));
+            }
+            ReconcileLines(entries);
+
+            var tweaks = node != null ? TweaksProvider?.Invoke(node) : null;
+            var sig = TweakSignature(tweaks);
+            if (nodeChanged || sig != tweaksSignature)
+            {
+                tweaksSignature = sig;
+                RebuildTweaks(node, tweaks);
             }
         }
 
-        void AddLiveSection(string title, List<string> lines)
+        void ReconcileLines(List<(bool Header, string Text)> entries)
+        {
+            var i = 0;
+            for (; i < entries.Count; i++)
+            {
+                var cls = entries[i].Header ? "ci-sidepanel-section" : "ci-edge-entry";
+                if (i < liveLinesBox.childCount)
+                {
+                    var label = (Label)liveLinesBox[i];
+                    if (label.text != entries[i].Text)
+                        label.text = entries[i].Text;
+                    if (!label.ClassListContains(cls))
+                    {
+                        label.ClearClassList();
+                        label.AddToClassList(cls);
+                    }
+                }
+                else
+                {
+                    var label = new Label(entries[i].Text);
+                    label.AddToClassList(cls);
+                    liveLinesBox.Add(label);
+                }
+            }
+            while (liveLinesBox.childCount > entries.Count)
+                liveLinesBox.RemoveAt(liveLinesBox.childCount - 1);
+        }
+
+        static void CollectLiveSection(List<(bool, string)> entries, string title,
+            List<string> lines)
         {
             if (lines == null || lines.Count == 0)
                 return;
-            var h = new Label(title);
-            h.AddToClassList("ci-sidepanel-section");
-            liveBox.Add(h);
+            entries.Add((true, title));
             foreach (var line in lines)
+                entries.Add((false, line));
+        }
+
+        static string TweakSignature(List<TweakRecord> tweaks)
+        {
+            if (tweaks == null || tweaks.Count == 0)
+                return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (var r in tweaks)
             {
-                var row = new Label(line);
-                row.AddToClassList("ci-edge-entry");
-                liveBox.Add(row);
+                sb.Append(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(r));
+                sb.Append(';').Append(r.OriginalValue);
+                sb.Append(';').Append(r.LastValue);
+                sb.Append(';').Append(r.Status).Append('|');
+            }
+            return sb.ToString();
+        }
+
+        void RebuildTweaks(GraphNode node, List<TweakRecord> tweaks)
+        {
+            tweaksBox.Clear();
+            if (node == null || tweaks == null || tweaks.Count == 0)
+                return;
+            var h = new Label("Play Mode changes (" + tweaks.Count + ")");
+            h.AddToClassList("ci-sidepanel-section");
+            tweaksBox.Add(h);
+            foreach (var rec in tweaks)
+            {
+                var row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                var reverted = rec.Status == (int)TweakStatus.Reverted;
+                var label = new Label(
+                    $"{rec.PropertyDisplay}  {rec.OriginalValue} → {rec.LastValue}" +
+                    (reverted ? "  (reverted)" : ""));
+                label.AddToClassList("ci-edge-entry");
+                label.style.flexGrow = 1f;
+                row.Add(label);
+                var revert = new Button(() => TweakRevertRequested?.Invoke(rec, node))
+                {
+                    text = "Revert",
+                };
+                revert.AddToClassList("ci-tweak-revert");
+                if (reverted)
+                    revert.SetEnabled(false);
+                row.Add(revert);
+                tweaksBox.Add(row);
             }
         }
 

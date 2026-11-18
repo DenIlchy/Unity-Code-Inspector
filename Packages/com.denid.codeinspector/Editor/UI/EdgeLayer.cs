@@ -32,7 +32,11 @@ namespace Denid.CodeInspector.Editor
         const float FlashDuration = 0.6f;
 
         readonly List<EdgeVisual> edges = new List<EdgeVisual>();
+        readonly Dictionary<GraphEdge, EdgeVisual> edgeByRef = new Dictionary<GraphEdge, EdgeVisual>();
         readonly Dictionary<GraphEdge, FlashInfo> flashes = new Dictionary<GraphEdge, FlashInfo>();
+
+        /// <summary>All flashed edges with their fire info (for label updates).</summary>
+        public IEnumerable<KeyValuePair<GraphEdge, FlashInfo>> Flashes => flashes;
         public string HighlightNodeId;
         public GraphEdge HoveredEdge;
         public Rect ViewportContentRect = new Rect(0, 0, float.MaxValue, float.MaxValue);
@@ -86,13 +90,10 @@ namespace Denid.CodeInspector.Editor
 
         public bool TryGetMidpoint(GraphEdge e, out Vector2 pos)
         {
-            foreach (var ev in edges)
+            if (edgeByRef.TryGetValue(e, out var ev))
             {
-                if (ev.Edge == e)
-                {
-                    pos = ev.Samples[ev.Samples.Length / 2];
-                    return true;
-                }
+                pos = ev.Samples[ev.Samples.Length / 2];
+                return true;
             }
             pos = default;
             return false;
@@ -102,6 +103,7 @@ namespace Denid.CodeInspector.Editor
             List<GraphEdge> edgeList, Func<EdgeKind, Color> colorOf)
         {
             edges.Clear();
+            edgeByRef.Clear();
             foreach (var e in edgeList)
             {
                 if (!nodeRects.TryGetValue(e.FromId, out var a) ||
@@ -113,6 +115,7 @@ namespace Denid.CodeInspector.Editor
                 ev.Samples = Sample(from, to, SampleCount);
                 ev.Bounds = ComputeBounds(ev.Samples);
                 edges.Add(ev);
+                edgeByRef[e] = ev;
             }
             ResizeToFit();
             MarkDirtyRepaint();

@@ -22,17 +22,28 @@ namespace Denid.CodeInspector.Editor
         readonly List<Row> rows = new List<Row>();
         Label summary;
         VisualElement listBox;
+        bool resolved;
+
+        void CreateGUI() => Build();
+
+        void OnDestroy()
+        {
+            if (!resolved)
+                TweakLog.Clear();
+        }
 
         public static void Open()
         {
             var w = GetWindow<KeepChangesWindow>(utility: true, title: "Keep Play Mode changes?");
             w.minSize = new Vector2(460, 320);
-            w.Build();
+            if (w.listBox != null)
+                w.Build();
             w.Show();
         }
 
         void Build()
         {
+            resolved = false;
             rows.Clear();
             var root = rootVisualElement;
             root.Clear();
@@ -53,7 +64,12 @@ namespace Denid.CodeInspector.Editor
             footer.style.flexDirection = FlexDirection.Row;
             root.Add(footer);
             footer.Add(new Button(KeepSelected) { text = "Keep selected" });
-            footer.Add(new Button(() => { TweakLog.Records.Clear(); Close(); }) { text = "Discard all" });
+            footer.Add(new Button(() =>
+            {
+                resolved = true;
+                TweakLog.Clear();
+                Close();
+            }) { text = "Discard all" });
             footer.Add(new Button(SelectAll) { text = "Select all" });
             footer.Add(new Button(SelectNone) { text = "Select none" });
 
@@ -139,7 +155,8 @@ namespace Denid.CodeInspector.Editor
             }
             Undo.CollapseUndoOperations(group);
             Debug.Log($"CodeInspector: kept {applied} Play Mode change(s).");
-            TweakLog.Records.Clear();
+            resolved = true;
+            TweakLog.Clear();
             Close();
         }
 

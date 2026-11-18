@@ -9,7 +9,7 @@ triggers, live runtime activity and parameter tweaking.
 Add via Unity Package Manager → `+` → **Add package from git URL…**:
 
 ```
-https://github.com/<github-user>/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector
+https://github.com/DenIlchy/Unity-Code-Inspector.git?path=/Packages/com.denid.codeinspector
 ```
 
 ## Repository layout

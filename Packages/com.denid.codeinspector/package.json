@@ -16,12 +16,12 @@
     "dependencies",
     "tools"
   ],
-  "documentationUrl": "https://github.com/<github-user>/Unity-Code-Inspector#readme",
-  "changelogUrl": "https://github.com/<github-user>/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/CHANGELOG.md",
-  "licensesUrl": "https://github.com/<github-user>/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/LICENSE.md",
+  "documentationUrl": "https://github.com/DenIlchy/Unity-Code-Inspector#readme",
+  "changelogUrl": "https://github.com/DenIlchy/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/CHANGELOG.md",
+  "licensesUrl": "https://github.com/DenIlchy/Unity-Code-Inspector/blob/main/Packages/com.denid.codeinspector/LICENSE.md",
   "repository": {
     "type": "git",
-    "url": "https://github.com/<github-user>/Unity-Code-Inspector.git"
+    "url": "https://github.com/DenIlchy/Unity-Code-Inspector.git"
   },
   "samples": [
     {

@@ -14,12 +14,10 @@ namespace Denid.CodeInspector.Editor.Tests
     public class RefreshThrottleTests
     {
         [Test]
-        public void SingleEventFiresAtDebounce()
+        public void SinglePingReturnsDebounce()
         {
             var t = new RefreshThrottle(300, 1000);
-            t.Ping(0);
-            Assert.IsFalse(t.IsDue(299));
-            Assert.IsTrue(t.IsDue(300));
+            Assert.AreEqual(300, t.Ping(0));
         }
 
         [Test]
@@ -28,23 +26,20 @@ namespace Denid.CodeInspector.Editor.Tests
             var t = new RefreshThrottle(300, 1000);
             // Events every 100 ms: the debounce keeps pushing out, but the
             // refresh must fire within 1000 ms of the first event.
-            for (long now = 0; now <= 3000; now += 100)
-            {
-                t.Ping(now);
-                if (now < 1000)
-                    Assert.IsFalse(t.IsDue(now));
-            }
-            Assert.IsTrue(t.IsDue(1000));
+            for (long now = 0; now < 800; now += 100)
+                Assert.AreEqual(300, t.Ping(now));
+            Assert.AreEqual(200, t.Ping(800));
+            Assert.AreEqual(100, t.Ping(900), "capped at max wait (due at 1000)");
         }
 
         [Test]
         public void PlayModeMaxWait1500()
         {
             var t = new RefreshThrottle(300, 1500);
-            for (long now = 0; now <= 1500; now += 100)
-                t.Ping(now);
-            Assert.IsFalse(t.IsDue(1000));
-            Assert.IsTrue(t.IsDue(1500));
+            for (long now = 0; now < 1300; now += 100)
+                Assert.AreEqual(300, t.Ping(now));
+            Assert.AreEqual(200, t.Ping(1300));
+            Assert.AreEqual(100, t.Ping(1400), "capped at max wait (due at 1500)");
         }
 
         [Test]
@@ -53,8 +48,7 @@ namespace Denid.CodeInspector.Editor.Tests
             var t = new RefreshThrottle(300, 1000);
             t.Ping(0);
             t.Reset();
-            Assert.IsFalse(t.Pending);
-            Assert.IsFalse(t.IsDue(10000));
+            Assert.AreEqual(300, t.Ping(10000));
         }
     }
 
@@ -84,6 +78,41 @@ namespace Denid.CodeInspector.Editor.Tests
             Assert.IsFalse(SceneRefreshPolicy.ShouldRefresh(new[] { ObjectChangeKind.None }));
             Assert.IsFalse(SceneRefreshPolicy.ShouldRefresh(new ObjectChangeKind[0]));
             Assert.IsFalse(SceneRefreshPolicy.ShouldRefresh(null));
+        }
+    }
+
+    public class PropertyChangeFilterTests
+    {
+        GameObject go;
+        FxFields fields;
+
+        [SetUp]
+        public void SetUp()
+        {
+            go = new GameObject("f");
+            fields = go.AddComponent<FxFields>();
+        }
+
+        [TearDown]
+        public void TearDown() => Object.DestroyImmediate(go);
+
+        [Test]
+        public void ReferenceChangesTriggerRefresh()
+        {
+            var filter = new SceneRefreshPolicy.PropertyChangeFilter();
+            Assert.IsTrue(filter.ShouldRefresh(fields), "first call");
+            fields.f = 9f;
+            Assert.IsFalse(filter.ShouldRefresh(fields), "plain float is not in the signature");
+            var cfg = ScriptableObject.CreateInstance<FxConfig>();
+            try
+            {
+                fields.reference = cfg;
+                Assert.IsTrue(filter.ShouldRefresh(fields), "object reference changed");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cfg);
+            }
         }
     }
 
@@ -190,6 +219,27 @@ namespace Denid.CodeInspector.Editor.Tests
             section.Bind(node2, typeGraph, sceneGraph);
             var inspector2 = section.Query<InspectorElement>().ToList().FirstOrDefault();
             Assert.AreSame(inspector1, inspector2, "inspector must survive stable rebind");
+        }
+
+        [Test]
+        public void BindDifferentScriptTypeNodesRebuilds()
+        {
+            var a = new GraphNode
+            {
+                Id = "type:a", Kind = NodeKind.ScriptType, Label = "A",
+                Type = typeof(FxHealth),
+            };
+            var b = new GraphNode
+            {
+                Id = "type:b", Kind = NodeKind.ScriptType, Label = "B",
+                Type = typeof(FxEnemy),
+            };
+            var section = new TweakSection();
+            section.Bind(a, typeGraph, sceneGraph);
+            var count = section.RebuildCount;
+            section.Bind(b, typeGraph, sceneGraph);
+            Assert.AreEqual(count + 1, section.RebuildCount,
+                "two different ScriptType nodes must not be treated as stable");
         }
 
         [Test]

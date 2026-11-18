@@ -38,13 +38,19 @@ namespace Denid.CodeInspector.Editor
                    !name.StartsWith(DemoAssemblyPrefix, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Whether a type outside the scanned set should still get a node/edge
+        /// (e.g. a base interface). Only meaningful when <see cref="AssemblyFilter"/>
+        /// narrows the user set; returns false when it is null because scanned-set
+        /// membership is already handled by the caller.
+        /// </summary>
         public bool IsUserType(Type type)
         {
             if (type == null || IsOwnAssembly(type.Assembly))
                 return false;
             if (AssemblyFilter != null)
                 return AssemblyFilter(type.Assembly);
-            return true;
+            return false;
         }
     }
 }

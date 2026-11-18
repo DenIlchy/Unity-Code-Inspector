@@ -4,7 +4,7 @@ Code Inspector maps your scripts and scenes as an interactive graph: script
 connections, events, triggers, live runtime activity and parameter tweaking.
 
 Full documentation is in the package [README](../README.md) and online at
-https://github.com/<github-user>/Unity-Code-Inspector
+https://github.com/DenIlchy/Unity-Code-Inspector
 
 ## Quick reference
 
